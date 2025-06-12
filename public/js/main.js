@@ -673,11 +673,23 @@ async function handleConfirmValidateWebhook() {
 // Login functionality
 async function handleLogin() {
     try {
+        console.log('Starting login process...');
         const response = await fetch('/auth/start');
+        console.log('Login response status:', response.status);
+        
         if (!response.ok) {
-            throw new Error('Failed to start authentication');
+            const errorText = await response.text();
+            console.error('Login response error:', errorText);
+            throw new Error(`Failed to start authentication: ${response.status} ${errorText}`);
         }
+        
         const data = await response.json();
+        console.log('Received auth URL:', data.authUrl);
+        
+        if (!data.authUrl) {
+            throw new Error('No authorization URL received from server');
+        }
+        
         // Redirect to Twitter's authorization page
         window.location.href = data.authUrl;
     } catch (error) {
