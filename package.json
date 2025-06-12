@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "description": "Twitter Account Activity Dashboard",
   "type": "module",
-  "main": "src/server.ts",
+  "main": "dist/server.js",
   "scripts": {
     "dev": "bun run src/server.ts",
-    "build": "bun build src/server.ts",
-    "start": "bun run src/server.ts"
+    "build": "tsc",
+    "start": "node dist/server.js"
   },
   "dependencies": {
     "express": "^4.18.2",

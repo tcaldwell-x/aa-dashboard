@@ -4,15 +4,18 @@
     "lib": ["ESNext"],
     "target": "ESNext",
     "module": "ESNext",
-    "moduleDetection": "force",
-    "jsx": "react-jsx",
+    "moduleResolution": "node",
+    "outDir": "./dist",
+    "rootDir": "./src",
     "allowJs": true,
+    "esModuleInterop": true,
 
     // Bundler mode
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
+    "moduleDetection": "force",
+    "jsx": "react-jsx",
+    "allowImportingTsExtensions": false,
     "verbatimModuleSyntax": true,
-    "noEmit": true,
+    "noEmit": false,
 
     // Best practices
     "strict": true,
@@ -23,6 +26,11 @@
     // Some stricter flags (disabled by default)
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noPropertyAccessFromIndexSignature": false
-  }
+    "noPropertyAccessFromIndexSignature": false,
+
+    // Additional options
+    "resolveJsonModule": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules"]
 }

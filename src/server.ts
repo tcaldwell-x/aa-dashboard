@@ -1,4 +1,4 @@
-import app from './app';
+import app from './app.js';
 
 // For local development
 if (process.env.NODE_ENV !== 'production') {
