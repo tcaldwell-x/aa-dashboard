@@ -1,6 +1,6 @@
 import type { ServerWebSocket } from 'bun';
 import crypto from 'crypto';
-import { handleSubscriptionRoutes } from './subscriptionRoutes'; // Import new handler
+import { handleSubscriptionRoutes } from './subscriptionRoutes.js'; // Import new handler
 
 // Helper to create a JSON response with logging
 function jsonResponse(status: number, body: any, method: string, pathname: string): Response {

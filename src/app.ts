@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
-import authRoutes from './routes/authRoutes';
-import { handleWebhookRoutes } from './routes/webhookRoutes';
+import authRoutes from './routes/authRoutes.js';
+import { handleWebhookRoutes } from './routes/webhookRoutes.js';
 
 const app = express();
 
