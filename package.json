@@ -2,6 +2,7 @@
   "name": "account-activity-dashboard-enterprise",
   "version": "1.0.0",
   "description": "Twitter Account Activity Dashboard",
+  "type": "module",
   "main": "src/server.ts",
   "scripts": {
     "dev": "bun run src/server.ts",
