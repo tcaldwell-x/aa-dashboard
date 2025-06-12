@@ -1,0 +1,240 @@
+// public/js/subscriptionHandler.js
+
+let cachedUserSubscriptions = {}; // Cache for subscriptions: { webhookId: [hydratedSubscriptionObjects] }
+
+// Get the user's access token from localStorage
+function getUserAccessToken() {
+    const tokenData = localStorage.getItem('tokenData');
+    if (!tokenData) {
+        throw new Error('No access token found. Please log in first.');
+    }
+    try {
+        const { access_token } = JSON.parse(tokenData);
+        if (!access_token) {
+            throw new Error('Invalid token data. Please log in again.');
+        }
+        return access_token;
+    } catch (error) {
+        console.error('Error parsing token data:', error);
+        throw new Error('Invalid token data. Please log in again.');
+    }
+}
+
+// Helper function to get the current access token
+function getAccessToken() {
+    const tokenData = localStorage.getItem('tokenData');
+    if (!tokenData) {
+        throw new Error('No access token found. Please log in.');
+    }
+    const { access_token } = JSON.parse(tokenData);
+    return access_token;
+}
+
+// Refactored to fetch and return user data, not directly update DOM for individual placeholders.
+async function fetchUserDetailsForSubscription(userId) {
+    // const userDetailsPlaceholder = document.getElementById(`user-details-${userId}`); // No longer directly updates placeholder here
+    try {
+        const response = await fetch(`/api/users/${userId}`);
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ message: 'Failed to parse user details error' }));
+            console.error(`Error fetching user details for ${userId}: ${response.status}`, errorData);
+            // Return a structured error or null so Promise.all can handle it gracefully
+            return { id: userId, error: true, status: response.status, details: errorData.error || errorData.details?.message || errorData.message || 'Failed to fetch' };
+        }
+        const userDataResponse = await response.json();
+        if (userDataResponse && userDataResponse.data) {
+            return userDataResponse.data; // Return the user data object
+        } else {
+            console.warn(`User details not found or in unexpected format for ${userId}.`);
+            return { id: userId, error: true, message: 'User details not found or in unexpected format.' };
+        }
+    } catch (error) {
+        console.error(`Failed to fetch user details for ${userId}:`, error);
+        return { id: userId, error: true, message: error.message || 'Network error or similar' };
+    }
+}
+
+function renderSubscriptionCards(webhookId, subscriptionsArray) {
+    const container = document.getElementById('subscriptions-list-container');
+    if (!container) {
+        console.error("Subscription list container not found for rendering.");
+        return;
+    }
+
+    if (!subscriptionsArray || subscriptionsArray.length === 0) {
+        container.innerHTML = '<p>No active subscriptions for this webhook.</p>';
+        return;
+    }
+
+    const ul = document.createElement('ul');
+    ul.id = 'subscriptions-list';
+    container.innerHTML = ''; // Clear loading/previous message
+    container.appendChild(ul);
+
+    subscriptionsArray.forEach(subscription => {
+        const li = document.createElement('li');
+        li.id = `subscription-card-${subscription.id}`;
+
+        const deleteButton = document.createElement('button');
+        deleteButton.className = 'delete-subscription-btn';
+        deleteButton.innerHTML = '<img src="/public/img/icons/delete-icon.svg" alt="Delete">';
+        deleteButton.setAttribute('aria-label', 'Delete Subscription');
+        deleteButton.setAttribute('title', 'Delete Subscription');
+        deleteButton.onclick = () => confirmDeleteSubscription(webhookId, subscription.id);
+
+        const contentDiv = document.createElement('div');
+        let userDetailsHtml;
+        if (subscription.error) {
+            userDetailsHtml = `<p style="color:red;"><em>Error loading details for User ID ${subscription.id}: ${subscription.message || subscription.details || 'Unknown error'}</em></p>`;
+        } else {
+            const profileUrl = subscription.username ? `https://x.com/${subscription.username}` : '#';
+            const avatarHtml = subscription.profile_image_url ? 
+                `<img src="${subscription.profile_image_url.replace('_normal', '_bigger')}" alt="Avatar" class="avatar-img">` : 
+                '<div class="avatar-placeholder"></div>';
+            
+            userDetailsHtml = `
+                <div class="user-card-layout">
+                    <div class="user-avatar-container">
+                        <a href="${profileUrl}" target="_blank" rel="noopener noreferrer" title="View profile on X">
+                            ${avatarHtml}
+                        </a>
+                    </div>
+                    <div class="user-info-container">
+                        <p class="user-handle">${subscription.username || 'N/A'}</p>
+                        <p class="user-id-subtext">ID: ${subscription.id}</p>
+                    </div>
+                </div>
+            `;
+        }
+        contentDiv.innerHTML = userDetailsHtml;
+        
+        li.appendChild(deleteButton);
+        li.appendChild(contentDiv);
+        ul.appendChild(li);
+    });
+}
+
+// Update fetchAndDisplaySubscriptions to use user token
+async function fetchAndDisplaySubscriptions() {
+    try {
+        const accessToken = getAccessToken();
+        const webhookId = document.getElementById('webhook-select').value;
+        
+        if (!webhookId) {
+            throw new Error('Please select a webhook first');
+        }
+
+        // First check if we have any subscriptions
+        const checkResponse = await fetch(`/api/webhooks/${webhookId}/subscriptions`, {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`
+            }
+        });
+
+        if (!checkResponse.ok) {
+            throw new Error('Failed to check subscriptions');
+        }
+
+        const checkData = await checkResponse.json();
+        
+        if (checkData.subscribed) {
+            // If subscribed, fetch the list of subscriptions
+            const listResponse = await fetch(`/api/webhooks/${webhookId}/subscriptions/list`, {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                }
+            });
+
+            if (!listResponse.ok) {
+                throw new Error('Failed to fetch subscription list');
+            }
+
+            const subscriptions = await listResponse.json();
+            await renderSubscriptionCards(webhookId, subscriptions);
+        } else {
+            // If not subscribed, show empty state
+            const container = document.getElementById('subscription-cards');
+            container.innerHTML = '<div class="no-subscriptions">No active subscriptions found</div>';
+        }
+    } catch (error) {
+        console.error('Error fetching subscriptions:', error);
+        alert(error.message);
+    }
+}
+
+function confirmDeleteSubscription(webhookId, userId) {
+    if (confirm(`Are you sure you want to delete the subscription for User ID: ${userId} from webhook ${webhookId}?`)) {
+        handleDeleteSubscription(userId);
+    }
+}
+
+async function handleDeleteSubscription(userId) {
+    try {
+        const accessToken = getAccessToken();
+        const webhookId = document.getElementById('webhook-select').value;
+        
+        if (!webhookId || !userId) {
+            throw new Error('Missing webhook ID or user ID');
+        }
+
+        const response = await fetch(`/api/webhooks/${webhookId}/subscriptions/${userId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to delete subscription');
+        }
+
+        // Refresh the subscription list
+        await fetchAndDisplaySubscriptions();
+    } catch (error) {
+        console.error('Error deleting subscription:', error);
+        alert(error.message);
+    }
+}
+
+async function handleAddSubscription() {
+    try {
+        const accessToken = getAccessToken();
+        const webhookId = document.getElementById('webhook-select').value;
+        const username = document.getElementById('username-input').value.trim();
+        
+        if (!webhookId || !username) {
+            throw new Error('Please select a webhook and enter a username');
+        }
+
+        const response = await fetch(`/api/webhooks/${webhookId}/subscriptions`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+            },
+            body: JSON.stringify({ username })
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to add subscription');
+        }
+
+        // Refresh the subscription list
+        await fetchAndDisplaySubscriptions();
+        
+        // Clear the input
+        document.getElementById('username-input').value = '';
+    } catch (error) {
+        console.error('Error adding subscription:', error);
+        alert(error.message);
+    }
+}
+
+// Ensure functions are globally accessible if called by onclick or from other scripts directly
+if (typeof window !== 'undefined') {
+    window.fetchAndDisplaySubscriptions = fetchAndDisplaySubscriptions;
+    window.handleAddSubscription = handleAddSubscription;
+    window.confirmDeleteSubscription = confirmDeleteSubscription; // Make this global for the button's onclick
+    window.handleDeleteSubscription = handleDeleteSubscription; // Though called internally, good practice if it were directly used
+    window.fetchUserDetailsForSubscription = fetchUserDetailsForSubscription; // Expose if needed, though called internally
+} 
