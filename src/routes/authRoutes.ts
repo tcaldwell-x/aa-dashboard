@@ -24,6 +24,8 @@ setInterval(() => {
 // Start OAuth 2.0 PKCE flow
 router.get('/start', (req: Request, res: Response) => {
     try {
+        console.log('Starting OAuth flow...');
+        
         // Generate PKCE code verifier and challenge
         const codeVerifier = crypto.randomBytes(32).toString('base64url');
         const codeChallenge = crypto
@@ -44,9 +46,20 @@ router.get('/start', (req: Request, res: Response) => {
         const clientId = process.env.X_CLIENT_ID;
         const redirectUri = process.env.X_REDIRECT_URI;
 
+        console.log('Environment variables:', {
+            clientId: clientId ? 'Set' : 'Not set',
+            redirectUri: redirectUri ? 'Set' : 'Not set'
+        });
+
         if (!clientId || !redirectUri) {
             console.error('Missing required environment variables:', { clientId, redirectUri });
-            return res.status(500).json({ error: 'Server configuration error: Missing required environment variables' });
+            return res.status(500).json({ 
+                error: 'Server configuration error: Missing required environment variables',
+                details: {
+                    clientId: clientId ? 'Set' : 'Not set',
+                    redirectUri: redirectUri ? 'Set' : 'Not set'
+                }
+            });
         }
 
         // Construct authorization URL
@@ -59,10 +72,22 @@ router.get('/start', (req: Request, res: Response) => {
         authUrl.searchParams.append('code_challenge', codeChallenge);
         authUrl.searchParams.append('code_challenge_method', 'S256');
 
+        console.log('Generated auth URL:', authUrl.toString());
+
         res.json({ authUrl: authUrl.toString() });
     } catch (error) {
         console.error('Error starting OAuth flow:', error);
-        res.status(500).json({ error: 'Failed to start authentication process' });
+        if (error instanceof Error) {
+            console.error('Error details:', {
+                name: error.name,
+                message: error.message,
+                stack: error.stack
+            });
+        }
+        res.status(500).json({ 
+            error: 'Failed to start authentication process',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
     }
 });
 

@@ -673,7 +673,7 @@ async function handleConfirmValidateWebhook() {
 // Login functionality
 async function handleLogin() {
     try {
-        const response = await fetch('/api/auth/start');
+        const response = await fetch('/auth/start');
         if (!response.ok) {
             throw new Error('Failed to start authentication');
         }
