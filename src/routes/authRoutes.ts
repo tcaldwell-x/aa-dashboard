@@ -40,11 +40,20 @@ router.get('/start', (req: Request, res: Response) => {
             timestamp: Date.now()
         });
 
+        // Get environment variables
+        const clientId = process.env.X_CLIENT_ID;
+        const redirectUri = process.env.X_REDIRECT_URI;
+
+        if (!clientId || !redirectUri) {
+            console.error('Missing required environment variables:', { clientId, redirectUri });
+            return res.status(500).json({ error: 'Server configuration error: Missing required environment variables' });
+        }
+
         // Construct authorization URL
         const authUrl = new URL('https://twitter.com/i/oauth2/authorize');
         authUrl.searchParams.append('response_type', 'code');
-        authUrl.searchParams.append('client_id', process.env.TWITTER_CLIENT_ID!);
-        authUrl.searchParams.append('redirect_uri', process.env.TWITTER_CALLBACK_URL!);
+        authUrl.searchParams.append('client_id', clientId);
+        authUrl.searchParams.append('redirect_uri', redirectUri);
         authUrl.searchParams.append('scope', 'tweet.read users.read offline.access');
         authUrl.searchParams.append('state', state);
         authUrl.searchParams.append('code_challenge', codeChallenge);
@@ -75,16 +84,26 @@ router.get('/callback', async (req: Request, res: Response) => {
         // Clean up used state
         pkceStore.delete(state);
 
+        // Get environment variables
+        const clientId = process.env.X_CLIENT_ID;
+        const clientSecret = process.env.X_CLIENT_SECRET;
+        const redirectUri = process.env.X_REDIRECT_URI;
+
+        if (!clientId || !clientSecret || !redirectUri) {
+            console.error('Missing required environment variables:', { clientId, clientSecret, redirectUri });
+            return res.status(500).json({ error: 'Server configuration error: Missing required environment variables' });
+        }
+
         // Exchange code for tokens
         const client = new TwitterApi({
-            clientId: process.env.TWITTER_CLIENT_ID!,
-            clientSecret: process.env.TWITTER_CLIENT_SECRET!,
+            clientId,
+            clientSecret,
         });
 
         const { accessToken, refreshToken, expiresIn } = await client.loginWithOAuth2({
             code,
             codeVerifier: storedData.codeVerifier,
-            redirectUri: process.env.TWITTER_CALLBACK_URL!,
+            redirectUri,
         });
 
         res.json({
@@ -107,9 +126,18 @@ router.post('/refresh', async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'Missing or invalid refresh token' });
         }
 
+        // Get environment variables
+        const clientId = process.env.X_CLIENT_ID;
+        const clientSecret = process.env.X_CLIENT_SECRET;
+
+        if (!clientId || !clientSecret) {
+            console.error('Missing required environment variables:', { clientId, clientSecret });
+            return res.status(500).json({ error: 'Server configuration error: Missing required environment variables' });
+        }
+
         const client = new TwitterApi({
-            clientId: process.env.TWITTER_CLIENT_ID!,
-            clientSecret: process.env.TWITTER_CLIENT_SECRET!,
+            clientId,
+            clientSecret,
         });
 
         const { accessToken, refreshToken, expiresIn } = await client.refreshOAuth2Token(refresh_token);
