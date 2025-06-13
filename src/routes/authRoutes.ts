@@ -8,59 +8,72 @@ dotenv.config();
 
 const router = express.Router();
 
-// Store PKCE state and code verifier in memory (in production, use a secure session store)
-const pkceStore = new Map<string, { codeVerifier: string; timestamp: number }>();
+// Store PKCE code verifiers
+const pkceStore = new Map<string, string>();
 
-// Clean up expired PKCE entries every hour
-setInterval(() => {
-    const now = Date.now();
-    for (const [state, data] of pkceStore.entries()) {
-        if (now - data.timestamp > 3600000) { // 1 hour
-            pkceStore.delete(state);
-        }
+// Helper to create a JSON response with logging
+function jsonResponse(status: number, body: any, method: string, pathname: string): Response {
+    const bodyStr = JSON.stringify(body);
+    console.log(`[AUTH_RESPONSE] ${method} ${pathname} - Status: ${status}, Body: ${bodyStr}`);
+    return new Response(bodyStr, {
+        status,
+        headers: { "Content-Type": "application/json" },
+    });
+}
+
+// Get current user info
+async function getCurrentUser(req: Request, url: URL): Promise<Response> {
+    // Get the access token from the Authorization header
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return jsonResponse(401, { error: "Missing or invalid Authorization header" }, req.method, url.pathname);
     }
-}, 3600000);
+    const accessToken = authHeader.split(' ')[1];
 
-// Start OAuth 2.0 PKCE flow
+    try {
+        const response = await fetch('https://api.twitter.com/2/users/me', {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const data = await response.json();
+        
+        if (!response.ok) {
+            console.error("Failed to get user info:", data);
+            return jsonResponse(response.status, { error: "Failed to get user info", details: data }, req.method, url.pathname);
+        }
+
+        return jsonResponse(200, data, req.method, url.pathname);
+    } catch (error) {
+        console.error("Error getting user info:", error);
+        return jsonResponse(500, { error: "Internal server error" }, req.method, url.pathname);
+    }
+}
+
+// Start OAuth flow
 router.get('/start', (req: Request, res: Response) => {
     try {
-        console.log('Starting OAuth flow...');
-        
-        // Generate PKCE code verifier and challenge
+        const clientId = process.env.X_CLIENT_ID;
+        const redirectUri = process.env.X_REDIRECT_URI;
+
+        if (!clientId || !redirectUri) {
+            return res.status(500).json({ error: 'Missing required environment variables' });
+        }
+
+        // Generate PKCE values
         const codeVerifier = crypto.randomBytes(32).toString('base64url');
         const codeChallenge = crypto
             .createHash('sha256')
             .update(codeVerifier)
             .digest('base64url');
 
-        // Generate state parameter for CSRF protection
+        // Generate state
         const state = crypto.randomBytes(16).toString('hex');
 
-        // Store code verifier and state
-        pkceStore.set(state, {
-            codeVerifier,
-            timestamp: Date.now()
-        });
-
-        // Get environment variables
-        const clientId = process.env.X_CLIENT_ID;
-        const redirectUri = process.env.X_REDIRECT_URI;
-
-        console.log('Environment variables:', {
-            clientId: clientId ? 'Set' : 'Not set',
-            redirectUri: redirectUri ? 'Set' : 'Not set'
-        });
-
-        if (!clientId || !redirectUri) {
-            console.error('Missing required environment variables:', { clientId, redirectUri });
-            return res.status(500).json({ 
-                error: 'Server configuration error: Missing required environment variables',
-                details: {
-                    clientId: clientId ? 'Set' : 'Not set',
-                    redirectUri: redirectUri ? 'Set' : 'Not set'
-                }
-            });
-        }
+        // Store code verifier
+        pkceStore.set(state, codeVerifier);
 
         // Construct authorization URL
         const authUrl = new URL('https://twitter.com/i/oauth2/authorize');
@@ -72,130 +85,101 @@ router.get('/start', (req: Request, res: Response) => {
         authUrl.searchParams.append('code_challenge', codeChallenge);
         authUrl.searchParams.append('code_challenge_method', 'S256');
 
-        console.log('Generated auth URL:', authUrl.toString());
-
         res.json({ authUrl: authUrl.toString() });
     } catch (error) {
         console.error('Error starting OAuth flow:', error);
-        if (error instanceof Error) {
-            console.error('Error details:', {
-                name: error.name,
-                message: error.message,
-                stack: error.stack
-            });
-        }
-        res.status(500).json({ 
-            error: 'Failed to start authentication process',
-            details: error instanceof Error ? error.message : 'Unknown error'
-        });
+        res.status(500).json({ error: 'Failed to start login process' });
     }
 });
 
-// OAuth callback route
+// Handle OAuth callback
 router.get('/callback', async (req: Request, res: Response) => {
     try {
         const { code, state } = req.query;
-        
-        if (!code || !state || typeof code !== 'string' || typeof state !== 'string') {
-            return res.redirect('/?error=missing_parameters');
-        }
-
-        // Retrieve stored code verifier
-        const storedData = pkceStore.get(state);
-        if (!storedData) {
-            console.error('Invalid or expired state:', state);
-            return res.redirect('/?error=invalid_state');
-        }
-
-        // Clean up used state
-        pkceStore.delete(state);
-
-        // Get environment variables
         const clientId = process.env.X_CLIENT_ID;
         const clientSecret = process.env.X_CLIENT_SECRET;
         const redirectUri = process.env.X_REDIRECT_URI;
 
-        if (!clientId || !clientSecret || !redirectUri) {
-            console.error('Missing required environment variables:', { clientId, clientSecret, redirectUri });
-            return res.redirect('/?error=server_error');
+        if (!code || !state || !clientId || !clientSecret || !redirectUri) {
+            return res.status(400).json({ error: 'Missing required parameters' });
         }
 
-        // Exchange the code for tokens
+        // Get stored code verifier
+        const codeVerifier = pkceStore.get(state as string);
+        if (!codeVerifier) {
+            return res.status(400).json({ error: 'Invalid state parameter' });
+        }
+
+        // Clean up used state
+        pkceStore.delete(state as string);
+
+        // Exchange code for tokens
         const tokenResponse = await fetch('https://api.twitter.com/2/oauth2/token', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
-                'Authorization': `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`
             },
             body: new URLSearchParams({
-                code,
+                code: code as string,
                 grant_type: 'authorization_code',
                 client_id: clientId,
                 redirect_uri: redirectUri,
-                code_verifier: storedData.codeVerifier
-            })
+                code_verifier: codeVerifier,
+            }),
         });
 
         if (!tokenResponse.ok) {
             const error = await tokenResponse.json();
-            console.error('Token exchange error:', error);
-            return res.redirect('/?error=auth_failed');
+            console.error('Token exchange failed:', error);
+            return res.status(400).json({ error: 'Failed to exchange code for tokens' });
         }
 
-        const tokenData = await tokenResponse.json() as {
+        const tokens = await tokenResponse.json() as {
             access_token: string;
             refresh_token: string;
             expires_in: number;
         };
 
-        // Redirect to the frontend with tokens in URL
-        const params = new URLSearchParams({
-            access_token: tokenData.access_token,
-            refresh_token: tokenData.refresh_token,
-            expires_in: tokenData.expires_in.toString()
-        });
+        // Redirect to frontend with tokens
+        const frontendUrl = new URL(process.env.FRONTEND_URL || 'https://aa-dashboard-huye.vercel.app');
+        frontendUrl.searchParams.append('access_token', tokens.access_token);
+        frontendUrl.searchParams.append('refresh_token', tokens.refresh_token);
+        frontendUrl.searchParams.append('expires_in', tokens.expires_in.toString());
 
-        // Use a 307 Temporary Redirect to preserve the POST method
-        res.redirect(307, `/?${params.toString()}`);
+        res.redirect(frontendUrl.toString());
     } catch (error) {
-        console.error('Callback error:', error);
-        res.redirect('/?error=auth_failed');
+        console.error('Error handling OAuth callback:', error);
+        res.status(500).json({ error: 'Failed to complete login process' });
     }
 });
 
-// Refresh access token
-router.post('/refresh', async (req: Request, res: Response) => {
+// Get current user info
+router.get('/api/users/me', async (req: Request, res: Response) => {
     try {
-        const { refresh_token } = req.query;
-
-        if (!refresh_token || typeof refresh_token !== 'string') {
-            return res.status(400).json({ error: 'Missing or invalid refresh token' });
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ error: "Missing or invalid Authorization header" });
         }
+        const accessToken = authHeader.split(' ')[1];
 
-        // Get environment variables
-        const clientId = process.env.X_CLIENT_ID;
-        const clientSecret = process.env.X_CLIENT_SECRET;
-
-        if (!clientId || !clientSecret) {
-            console.error('Missing required environment variables:', { clientId, clientSecret });
-            return res.status(500).json({ error: 'Server configuration error: Missing required environment variables' });
-        }
-
-        const client = new TwitterApi({
-            clientId,
-            clientSecret,
+        const response = await fetch('https://api.twitter.com/2/users/me', {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+            }
         });
 
-        const { accessToken, refreshToken, expiresIn } = await client.refreshOAuth2Token(refresh_token);
+        const data = await response.json();
+        
+        if (!response.ok) {
+            console.error("Failed to get user info:", data);
+            return res.status(response.status).json({ error: "Failed to get user info", details: data });
+        }
 
-        res.json({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-            expires_in: expiresIn
-        });
+        res.json(data);
     } catch (error) {
-        console.error('Error refreshing token:', error);
-        res.status(500).json({ error: 'Failed to refresh token' });
+        console.error("Error getting user info:", error);
+        res.status(500).json({ error: "Internal server error" });
     }
 });
 

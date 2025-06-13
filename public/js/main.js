@@ -746,8 +746,8 @@ async function updateUIForLoggedInUser() {
     try {
         const { access_token } = JSON.parse(tokenData);
         
-        // Fetch user info using the access token
-        const response = await fetch('https://api.twitter.com/2/users/me', {
+        // Fetch user info through our backend proxy
+        const response = await fetch('/api/users/me', {
             headers: {
                 'Authorization': `Bearer ${access_token}`
             }
