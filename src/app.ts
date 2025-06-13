@@ -1,10 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import cors from 'cors';
-import { config } from 'dotenv';
 import type { Request, Response } from 'express';
-import session from 'express-session';
 import authRoutes from './routes/authRoutes.js';
 import { handleWebhookRoutes } from './routes/webhookRoutes.js';
 
