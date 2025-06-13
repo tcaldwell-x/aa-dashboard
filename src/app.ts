@@ -4,8 +4,6 @@ import { fileURLToPath } from 'url';
 import type { Request, Response } from 'express';
 import authRoutes from './routes/authRoutes.js';
 import { handleWebhookRoutes } from './routes/webhookRoutes.js';
-import { WebSocketServer, WebSocket } from 'ws';
-import { createServer } from 'http';
 import cors from 'cors';
 import dotenv from 'dotenv';
 
@@ -15,47 +13,23 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const server = createServer(app);
 
-// Create WebSocket server
-const wss = new WebSocketServer({ 
-    server,
-    path: '/ws/live-events'
-});
+// Store active SSE connections
+const sseClients = new Set<Response>();
 
-// Store active connections
-const clients = new Map<WebSocket, { token: string }>();
-
-// WebSocket connection handler
-wss.on('connection', (ws: WebSocket) => {
-    console.log('New WebSocket connection');
-    
-    // Handle authentication
-    ws.on('message', (message: Buffer) => {
+// Function to broadcast messages to all connected SSE clients
+function broadcastToSSEClients(message: string | object) {
+    const messageString = typeof message === 'string' ? message : JSON.stringify(message);
+    console.log(`[SSE_BROADCAST] Broadcasting to ${sseClients.size} clients: ${messageString.substring(0,100)}...`);
+    for (const client of sseClients) {
         try {
-            const data = JSON.parse(message.toString());
-            if (data.type === 'auth' && data.token) {
-                // Store the authenticated connection
-                clients.set(ws, { token: data.token });
-                console.log('Client authenticated');
-                
-                // Send acknowledgment
-                ws.send(JSON.stringify({
-                    type: 'connection_ack',
-                    message: 'Connected to live events stream'
-                }));
-            }
-        } catch (error) {
-            console.error('Error handling WebSocket message:', error);
+            client.write(`data: ${messageString}\n\n`);
+        } catch (e) {
+            console.error("[SSE_BROADCAST] Error sending to client:", e);
+            sseClients.delete(client);
         }
-    });
-
-    // Handle disconnection
-    ws.on('close', () => {
-        console.log('Client disconnected');
-        clients.delete(ws);
-    });
-});
+    }
+}
 
 // Middleware
 app.use(cors());
@@ -65,68 +39,36 @@ app.use(express.static(path.join(__dirname, '../public')));
 // Routes
 app.use('/auth', authRoutes);
 
-// Status endpoint
-app.get('/auth/status', (req: Request, res: Response) => {
-    const accessToken = req.cookies.access_token;
-    res.json({ isLoggedIn: !!accessToken });
-});
-
-// OAuth callback route
-app.get('/auth/callback', async (req: Request, res: Response) => {
-    try {
-        const { code, state } = req.query;
-        
-        if (!code || !state) {
-            return res.redirect('/?error=missing_parameters');
-        }
-
-        // Exchange the code for tokens
-        const tokenResponse = await fetch('https://api.twitter.com/2/oauth2/token', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Authorization': `Basic ${Buffer.from(`${process.env.X_CLIENT_ID}:${process.env.X_CLIENT_SECRET}`).toString('base64')}`
-            },
-            body: new URLSearchParams({
-                code: code as string,
-                grant_type: 'authorization_code',
-                client_id: process.env.X_CLIENT_ID!,
-                redirect_uri: process.env.X_REDIRECT_URI!,
-                code_verifier: req.query.code_verifier as string || ''
-            })
-        });
-
-        if (!tokenResponse.ok) {
-            const error = await tokenResponse.json();
-            console.error('Token exchange error:', error);
-            return res.redirect('/?error=auth_failed');
-        }
-
-        const tokenData = await tokenResponse.json() as {
-            access_token: string;
-            refresh_token: string;
-            expires_in: number;
-        };
-
-        // Redirect to the frontend with tokens in URL
-        const params = new URLSearchParams({
-            access_token: tokenData.access_token,
-            refresh_token: tokenData.refresh_token,
-            expires_in: tokenData.expires_in.toString()
-        });
-
-        // Use a 307 Temporary Redirect to preserve the POST method
-        res.redirect(307, `/?${params.toString()}`);
-    } catch (error) {
-        console.error('Callback error:', error);
-        res.redirect('/?error=auth_failed');
+// SSE endpoint for live events
+app.get('/events/stream', (req: Request, res: Response) => {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+        return res.status(401).json({ error: 'Unauthorized' });
     }
+
+    // Set SSE headers
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+    });
+
+    // Send initial connection message
+    res.write(`data: ${JSON.stringify({ type: "connection_ack", message: "Connected to live event stream" })}\n\n`);
+
+    // Add client to the set
+    sseClients.add(res);
+
+    // Remove client when connection closes
+    req.on('close', () => {
+        sseClients.delete(res);
+        console.log('Client disconnected from SSE stream');
+    });
 });
 
 // Handle webhook routes
 app.use(async (req, res, next) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
-    // Create a proper Request object
     const request = new Request(url.toString(), {
         method: req.method,
         headers: new Headers(req.headers as Record<string, string>),
@@ -134,7 +76,6 @@ app.use(async (req, res, next) => {
     });
     const response = await handleWebhookRoutes(request, url);
     if (response) {
-        // Convert Response to Express response
         res.status(response.status);
         for (const [key, value] of response.headers.entries()) {
             res.setHeader(key, value);
@@ -158,10 +99,10 @@ app.get('/health', (req: Request, res: Response) => {
 
 // Start server
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
+app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
 
-// Export for testing and server
-export { server, wss };
+// Export for testing
+export { broadcastToSSEClients };
 export default app; 

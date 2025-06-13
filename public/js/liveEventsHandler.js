@@ -1,4 +1,4 @@
-let liveEventsSocket = null;
+let eventSource = null;
 const MAX_EVENTS_DISPLAYED = 50; // Keep a manageable number of events on screen
 
 function formatXTimestamp(timestamp) {
@@ -196,87 +196,65 @@ function initializeLiveEvents() {
 
     liveEventsContainer.innerHTML = '<p><i>Attempting to connect to live event stream...</i></p>';
 
-    if (liveEventsSocket && liveEventsSocket.readyState === WebSocket.OPEN) {
-        console.log("WebSocket already open for live events.");
-        addEventToContainer({type: "connection_ack", message: "Re-focused tab. WebSocket was already open."});
+    if (eventSource && eventSource.readyState === EventSource.OPEN) {
+        console.log("EventSource already open for live events.");
+        addEventToContainer({type: "connection_ack", message: "Re-focused tab. EventSource was already open."});
         return;
     }
 
-    // Determine WebSocket protocol (ws or wss)
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProtocol}//${window.location.host}/ws/live-events`;
+    // Get the auth token
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+        console.error("[EventSource] No auth token found");
+        liveEventsContainer.innerHTML = '<p style="color:red;"><i>Authentication token not found. Please log in again.</i></p>';
+        return;
+    }
 
-    liveEventsSocket = new WebSocket(wsUrl);
+    // Create new EventSource connection
+    eventSource = new EventSource('/events/stream', {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    });
 
-    liveEventsSocket.onopen = function(event) {
-        console.log("[WebSocket] Connection established for live events.");
+    eventSource.onopen = function(event) {
+        console.log("[EventSource] Connection established for live events.");
         if(liveEventsContainer.firstChild && liveEventsContainer.firstChild.tagName === 'P' && liveEventsContainer.firstChild.textContent.includes('Attempting to connect')){
             liveEventsContainer.innerHTML = ''; // Clear "Attempting to connect..."
         }
-        
-        // Send authentication message
-        const token = localStorage.getItem('authToken');
-        if (token) {
-            liveEventsSocket.send(JSON.stringify({
-                type: 'auth',
-                token: token
-            }));
-        } else {
-            console.error("[WebSocket] No auth token found");
-            addEventToContainer({ type: "system_error", message: "Authentication token not found. Please log in again." });
-            liveEventsSocket.close();
-        }
     };
 
-    liveEventsSocket.onmessage = function(event) {
+    eventSource.onmessage = function(event) {
         try {
             const eventData = JSON.parse(event.data);
-            console.log("[WebSocket] Message from server: ", eventData);
+            console.log("[EventSource] Message from server: ", eventData);
             
             // Handle connection acknowledgment
             if (eventData.type === "connection_ack") {
-                console.log("[WebSocket] Connection acknowledged by server");
+                console.log("[EventSource] Connection acknowledged by server");
                 return;
             }
             
             addEventToContainer(eventData);
         } catch (e) {
-            console.error("[WebSocket] Error parsing message from server:", e);
+            console.error("[EventSource] Error parsing message from server:", e);
             addEventToContainer({ type: "system_error", message: "Error parsing server message.", details: event.data });
         }
     };
 
-    liveEventsSocket.onerror = function(event) {
-        console.error("[WebSocket] Error observed:", event);
-        addEventToContainer({ type: "system_error", message: "WebSocket error observed. See console for details." });
+    eventSource.onerror = function(event) {
+        console.error("[EventSource] Error observed:", event);
+        addEventToContainer({ type: "system_error", message: "EventSource error observed. See console for details." });
         if(liveEventsContainer.firstChild && liveEventsContainer.firstChild.tagName === 'P' && liveEventsContainer.firstChild.textContent.includes('Attempting to connect')){
             liveEventsContainer.innerHTML = '<p style="color:red;"><i>Error connecting to live event stream. See console.</i></p>';
         }
     };
 
-    liveEventsSocket.onclose = function(event) {
-        console.log("[WebSocket] Connection closed for live events. Code:", event.code, "Reason:", event.reason);
-        
-        // Only show error message if it wasn't a normal closure
-        if (event.code !== 1000) {
-            addEventToContainer({ 
-                type: "system_error", 
-                message: `WebSocket connection closed. Code: ${event.code}. ${event.reason ? "Reason: "+event.reason : ""}` 
-            });
-        }
-        
-        liveEventsSocket = null; // Reset for re-connection if tab is re-opened
-        
-        if(liveEventsContainer.firstChild && liveEventsContainer.firstChild.tagName === 'P' && liveEventsContainer.firstChild.textContent.includes('Attempting to connect')){
-            liveEventsContainer.innerHTML = '<p style="color:orange;"><i>Disconnected from live event stream. Will attempt to reconnect if you revisit this tab.</i></p>';
-        }
-    };
-
     return {
         stop: () => {
-            if (liveEventsSocket) {
-                liveEventsSocket.close(1000, "User navigated away from live events tab");
-                liveEventsSocket = null;
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
             }
         }
     };
