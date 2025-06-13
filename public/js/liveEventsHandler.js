@@ -229,19 +229,31 @@ async function pollForEvents() {
         
         // Always use a valid timestamp
         let timestamp;
+        const now = new Date();
+        
         if (lastEventTimestamp) {
-            // Ensure the timestamp is not in the future
+            // Parse the last timestamp
             const lastTimestamp = new Date(lastEventTimestamp);
-            const now = new Date();
-            if (lastTimestamp > now) {
-                // If timestamp is in the future, use current time minus 1 minute
+            
+            // Validate the timestamp
+            if (isNaN(lastTimestamp.getTime())) {
+                console.warn('Invalid lastEventTimestamp, resetting to 1 hour ago');
+                timestamp = new Date(now.getTime() - 60 * 60 * 1000);
+            } else if (lastTimestamp > now) {
+                console.warn('Future timestamp detected, resetting to 1 minute ago');
                 timestamp = new Date(now.getTime() - 60000);
             } else {
                 timestamp = lastTimestamp;
             }
         } else {
             // If no lastEventTimestamp, get events from the last hour
-            timestamp = new Date(Date.now() - 60 * 60 * 1000);
+            timestamp = new Date(now.getTime() - 60 * 60 * 1000);
+        }
+
+        // Double-check that we're not using a future timestamp
+        if (timestamp > now) {
+            console.warn('Timestamp still in future after validation, using current time minus 1 minute');
+            timestamp = new Date(now.getTime() - 60000);
         }
 
         // Format the timestamp as ISO string and remove milliseconds
@@ -268,8 +280,10 @@ async function pollForEvents() {
         if (data.events && data.events.length > 0) {
             // Ensure the timestamp is valid before updating
             const newTimestamp = new Date(data.events[data.events.length - 1].timestamp);
-            if (!isNaN(newTimestamp.getTime()) && newTimestamp <= new Date()) {
+            if (!isNaN(newTimestamp.getTime()) && newTimestamp <= now) {
                 lastEventTimestamp = data.events[data.events.length - 1].timestamp;
+            } else {
+                console.warn('Invalid or future timestamp in response, not updating lastEventTimestamp');
             }
             data.events.forEach(handleLiveEvent);
         }
