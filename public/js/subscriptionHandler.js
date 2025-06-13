@@ -115,10 +115,9 @@ function renderSubscriptionCards(webhookId, subscriptionsArray) {
 }
 
 // Update fetchAndDisplaySubscriptions to use user token
-async function fetchAndDisplaySubscriptions() {
+async function fetchAndDisplaySubscriptions(webhookId) {
     try {
         const accessToken = getAccessToken();
-        const webhookId = document.getElementById('webhook-select').value;
         
         if (!webhookId) {
             throw new Error('Please select a webhook first');
@@ -153,12 +152,17 @@ async function fetchAndDisplaySubscriptions() {
             await renderSubscriptionCards(webhookId, subscriptions);
         } else {
             // If not subscribed, show empty state
-            const container = document.getElementById('subscription-cards');
-            container.innerHTML = '<div class="no-subscriptions">No active subscriptions found</div>';
+            const container = document.getElementById('subscriptions-list-container');
+            if (container) {
+                container.innerHTML = '<div class="no-subscriptions">No active subscriptions found</div>';
+            }
         }
     } catch (error) {
         console.error('Error fetching subscriptions:', error);
-        alert(error.message);
+        const container = document.getElementById('subscriptions-list-container');
+        if (container) {
+            container.innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+        }
     }
 }
 
@@ -189,7 +193,7 @@ async function handleDeleteSubscription(userId) {
         }
 
         // Refresh the subscription list
-        await fetchAndDisplaySubscriptions();
+        await fetchAndDisplaySubscriptions(webhookId);
     } catch (error) {
         console.error('Error deleting subscription:', error);
         alert(error.message);
@@ -199,11 +203,10 @@ async function handleDeleteSubscription(userId) {
 async function handleAddSubscription() {
     try {
         const accessToken = getAccessToken();
-        const webhookId = document.getElementById('webhook-select').value;
-        const username = document.getElementById('username-input').value.trim();
+        const webhookId = document.getElementById('webhook-select-for-subscriptions').value;
         
-        if (!webhookId || !username) {
-            throw new Error('Please select a webhook and enter a username');
+        if (!webhookId) {
+            throw new Error('Please select a webhook first');
         }
 
         const response = await fetch(`/api/webhooks/${webhookId}/subscriptions`, {
@@ -212,7 +215,7 @@ async function handleAddSubscription() {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${accessToken}`
             },
-            body: JSON.stringify({ username })
+            body: JSON.stringify({})
         });
 
         if (!response.ok) {
@@ -220,13 +223,24 @@ async function handleAddSubscription() {
         }
 
         // Refresh the subscription list
-        await fetchAndDisplaySubscriptions();
+        await fetchAndDisplaySubscriptions(webhookId);
         
-        // Clear the input
-        document.getElementById('username-input').value = '';
+        // Show success message
+        const messageElement = document.getElementById('add-subscription-message');
+        if (messageElement) {
+            messageElement.textContent = 'Subscription added successfully!';
+            messageElement.style.color = 'green';
+            setTimeout(() => {
+                messageElement.textContent = '';
+            }, 3000);
+        }
     } catch (error) {
         console.error('Error adding subscription:', error);
-        alert(error.message);
+        const messageElement = document.getElementById('add-subscription-message');
+        if (messageElement) {
+            messageElement.textContent = `Error: ${error.message}`;
+            messageElement.style.color = 'red';
+        }
     }
 }
 
