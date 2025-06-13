@@ -149,7 +149,7 @@ async function fetchAndDisplaySubscriptions(webhookId) {
         const checkData = await checkResponse.json();
         console.log('Subscription check response:', checkData);
         
-        if (checkData.subscribed) {
+        if (checkData.data && checkData.data.subscribed) {
             // If subscribed, fetch the list of subscriptions
             const listResponse = await fetch(`/api/webhooks/${webhookId}/subscriptions/list`, {
                 headers: {
