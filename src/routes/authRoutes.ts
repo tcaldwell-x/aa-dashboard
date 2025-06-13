@@ -225,11 +225,26 @@ router.get('/events', async (req: Request, res: Response) => {
         const since = req.query.since as string;
 
         // Get events from Twitter API
-        const response = await fetch(`https://api.twitter.com/2/users/me/tweets?${new URLSearchParams({
+        const params = new URLSearchParams({
             'tweet.fields': 'created_at,author_id',
             'max_results': '10',
-            ...(since ? { 'start_time': since } : {})
-        })}`, {
+            'expansions': 'author_id',
+            'user.fields': 'name,username'
+        });
+
+        // Only add start_time if it's a valid date
+        if (since) {
+            try {
+                const sinceDate = new Date(since);
+                if (!isNaN(sinceDate.getTime())) {
+                    params.append('start_time', since);
+                }
+            } catch (e) {
+                console.error("Invalid since parameter:", e);
+            }
+        }
+
+        const response = await fetch(`https://api.twitter.com/2/users/me/tweets?${params}`, {
             headers: {
                 'Authorization': `Bearer ${accessToken}`,
                 'Content-Type': 'application/json'
@@ -240,15 +255,28 @@ router.get('/events', async (req: Request, res: Response) => {
         
         if (!response.ok) {
             console.error("Failed to get events:", data);
-            return res.status(response.status).json({ error: "Failed to get events", details: data });
+            return res.status(response.status).json({ 
+                error: "Failed to get events", 
+                details: data,
+                message: data.detail || data.message || "Unknown error"
+            });
         }
 
         // Transform the data into our event format
-        const events = data.data?.map((tweet: any) => ({
-            type: 'tweet',
-            timestamp: tweet.created_at,
-            data: tweet
-        })) || [];
+        const events = data.data?.map((tweet: any) => {
+            const author = data.includes?.users?.find((u: any) => u.id === tweet.author_id);
+            return {
+                type: 'tweet',
+                timestamp: tweet.created_at,
+                data: {
+                    ...tweet,
+                    author: author ? {
+                        name: author.name,
+                        username: author.username
+                    } : null
+                }
+            };
+        }) || [];
 
         res.json({ events });
     } catch (error) {
