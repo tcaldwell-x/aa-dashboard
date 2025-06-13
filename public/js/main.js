@@ -764,9 +764,26 @@ async function updateUIForLoggedInUser() {
         // Update UI elements
         const loginBtn = document.getElementById('login-btn');
         if (loginBtn) {
-            loginBtn.textContent = `Logged in as @${username}`;
-            loginBtn.disabled = true;
-            loginBtn.onclick = handleLogout; // Change to logout handler
+            // Create a container for the user info and logout button
+            const userContainer = document.createElement('div');
+            userContainer.style.display = 'flex';
+            userContainer.style.alignItems = 'center';
+            userContainer.style.gap = '10px';
+
+            // Add user info
+            const userInfo = document.createElement('span');
+            userInfo.textContent = `Logged in as @${username}`;
+            userContainer.appendChild(userInfo);
+
+            // Add logout button
+            const logoutBtn = document.createElement('button');
+            logoutBtn.textContent = 'Logout';
+            logoutBtn.className = 'logout-btn';
+            logoutBtn.onclick = handleLogout;
+            userContainer.appendChild(logoutBtn);
+
+            // Replace the login button with our new container
+            loginBtn.replaceWith(userContainer);
         }
 
         // Show user-specific sections
@@ -787,10 +804,22 @@ async function updateUIForLoggedInUser() {
 
 // Update UI for logged out user
 function updateUIForLoggedOutUser() {
-    const loginBtn = document.getElementById('login-btn');
-    if (loginBtn) {
-        loginBtn.textContent = 'Login with X';
-        loginBtn.disabled = false;
+    // Create a new login button
+    const loginBtn = document.createElement('button');
+    loginBtn.id = 'login-btn';
+    loginBtn.textContent = 'Login with X';
+    loginBtn.onclick = handleLogin;
+
+    // Find the existing login button or its container and replace it
+    const existingLoginBtn = document.getElementById('login-btn');
+    if (existingLoginBtn) {
+        existingLoginBtn.replaceWith(loginBtn);
+    } else {
+        // If no login button exists, find the user container and replace it
+        const userContainer = document.querySelector('.user-container');
+        if (userContainer) {
+            userContainer.replaceWith(loginBtn);
+        }
     }
 
     // Hide user-specific sections
@@ -800,10 +829,11 @@ function updateUIForLoggedOutUser() {
 }
 
 function handleLogout() {
+    console.log('Logging out...');
     localStorage.removeItem('tokenData');
     updateUIForLoggedOutUser();
-    // Optionally refresh the page to clear any cached data
-    window.location.reload();
+    // Redirect to home page
+    window.location.href = '/';
 }
 
 // Handle OAuth callback
