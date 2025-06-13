@@ -76,7 +76,7 @@ function renderSubscriptionCards(webhookId, subscriptionsArray) {
 
     const ul = document.createElement('ul');
     ul.id = 'subscriptions-list';
-    container.innerHTML = ''; // Clear loading/previous message
+    container.innerHTML = ''; // Clear loading/previous message.
     container.appendChild(ul);
 
     subscriptionsArray.forEach(async subscription => {
