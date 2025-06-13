@@ -227,6 +227,12 @@ async function pollForEvents() {
         // Get events since last timestamp
         const url = new URL('/auth/events', window.location.origin);
         if (lastEventTimestamp) {
+            // Ensure the timestamp is not in the future
+            const timestamp = new Date(lastEventTimestamp);
+            if (timestamp > new Date()) {
+                // If timestamp is in the future, use current time instead
+                lastEventTimestamp = new Date().toISOString();
+            }
             // Format the timestamp as ISO string and remove milliseconds
             const formattedTimestamp = new Date(lastEventTimestamp).toISOString().split('.')[0] + 'Z';
             url.searchParams.append('since', formattedTimestamp);
@@ -244,14 +250,19 @@ async function pollForEvents() {
         });
 
         if (!response.ok) {
-            throw new Error(`Failed to fetch events: ${response.status}`);
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(`Failed to fetch events: ${response.status}${errorData.error ? ` - ${errorData.error}` : ''}`);
         }
 
         const data = await response.json();
         
         // Update last timestamp if we got events
         if (data.events && data.events.length > 0) {
-            lastEventTimestamp = data.events[data.events.length - 1].timestamp;
+            // Ensure the timestamp is valid before updating
+            const newTimestamp = new Date(data.events[data.events.length - 1].timestamp);
+            if (!isNaN(newTimestamp.getTime())) {
+                lastEventTimestamp = data.events[data.events.length - 1].timestamp;
+            }
             data.events.forEach(handleLiveEvent);
         }
 
