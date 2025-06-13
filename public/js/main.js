@@ -71,6 +71,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Check if user is already logged in
     checkLoginStatus();
+
+    // Check for OAuth callback on any page load
+    console.log('DOMContentLoaded event fired');
+    handleOAuthCallback(); // Check for OAuth callback parameters
+    checkLoginStatus(); // Check login status
 });
 
 function handleHashChange() {
@@ -700,8 +705,10 @@ async function handleLogin() {
 
 // Check login status on page load
 async function checkLoginStatus() {
+    console.log('Checking login status...');
     const tokenData = localStorage.getItem('tokenData');
     if (!tokenData) {
+        console.log('No token data found');
         updateUIForLoggedOutUser();
         return;
     }
@@ -712,9 +719,11 @@ async function checkLoginStatus() {
         
         // Check if token is expired (with 5-minute buffer)
         if (now - timestamp > (expires_in * 1000 - 300000)) {
+            console.log('Token expired or expiring soon, attempting refresh');
             // Token is expired or will expire soon, try to refresh
             await refreshAccessToken();
         } else {
+            console.log('Token still valid, updating UI');
             // Token is still valid
             await updateUIForLoggedInUser();
         }
@@ -726,8 +735,10 @@ async function checkLoginStatus() {
 
 // Update UI for logged in user
 async function updateUIForLoggedInUser() {
+    console.log('Updating UI for logged in user');
     const tokenData = localStorage.getItem('tokenData');
     if (!tokenData) {
+        console.log('No token data found for UI update');
         updateUIForLoggedOutUser();
         return;
     }
@@ -748,12 +759,14 @@ async function updateUIForLoggedInUser() {
 
         const data = await response.json();
         const username = data.data.username;
+        console.log('Fetched user info for:', username);
 
         // Update UI elements
         const loginBtn = document.getElementById('login-btn');
         if (loginBtn) {
             loginBtn.textContent = `Logged in as @${username}`;
             loginBtn.disabled = true;
+            loginBtn.onclick = handleLogout; // Change to logout handler
         }
 
         // Show user-specific sections
@@ -818,6 +831,7 @@ async function handleOAuthCallback() {
     const expiresIn = urlParams.get('expires_in');
     
     if (accessToken && refreshToken && expiresIn) {
+        console.log('Storing tokens from URL parameters');
         // Store the tokens in localStorage
         localStorage.setItem('tokenData', JSON.stringify({
             access_token: accessToken,
