@@ -61,8 +61,11 @@ app.get('/auth/callback', async (req: Request, res: Response) => {
             expires_in: tokenData.expires_in.toString()
         });
         
-        // Redirect to the frontend with tokens in URL
-        res.redirect(`/?${params.toString()}`);
+        // Force a redirect to the frontend with tokens in URL
+        res.writeHead(302, {
+            'Location': `/?${params.toString()}`
+        });
+        res.end();
     } catch (error) {
         console.error('Callback error:', error);
         res.redirect('/?error=auth_failed');
