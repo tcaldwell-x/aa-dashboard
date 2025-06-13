@@ -775,7 +775,8 @@ async function updateUIForLoggedInUser() {
         });
 
         // Initialize webhook dropdown if on subscriptions page
-        if (typeof populateWebhookDropdownForSubscriptions === 'function') {
+        if (window.location.hash === '#subscriptions') {
+            console.log('On subscriptions page, initializing webhook dropdown');
             await populateWebhookDropdownForSubscriptions();
         }
     } catch (error) {
