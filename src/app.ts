@@ -4,13 +4,58 @@ import { fileURLToPath } from 'url';
 import type { Request, Response } from 'express';
 import authRoutes from './routes/authRoutes.js';
 import { handleWebhookRoutes } from './routes/webhookRoutes.js';
+import { WebSocketServer, WebSocket } from 'ws';
+import { createServer } from 'http';
+import cors from 'cors';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+const server = createServer(app);
+
+// Create WebSocket server
+const wss = new WebSocketServer({ server });
+
+// Store active connections
+const clients = new Map<WebSocket, { token: string }>();
+
+// WebSocket connection handler
+wss.on('connection', (ws: WebSocket) => {
+    console.log('New WebSocket connection');
+    
+    // Handle authentication
+    ws.on('message', (message: Buffer) => {
+        try {
+            const data = JSON.parse(message.toString());
+            if (data.type === 'auth' && data.token) {
+                // Store the authenticated connection
+                clients.set(ws, { token: data.token });
+                console.log('Client authenticated');
+                
+                // Send acknowledgment
+                ws.send(JSON.stringify({
+                    type: 'connection_ack',
+                    message: 'Connected to live events stream'
+                }));
+            }
+        } catch (error) {
+            console.error('Error handling WebSocket message:', error);
+        }
+    });
+
+    // Handle disconnection
+    ws.on('close', () => {
+        console.log('Client disconnected');
+        clients.delete(ws);
+    });
+});
 
 // Middleware
+app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
@@ -103,4 +148,16 @@ app.use((req, res) => {
     res.sendFile(path.join(__dirname, '../index.html'));
 });
 
-export default app; 
+// Health check endpoint
+app.get('/health', (req: Request, res: Response) => {
+    res.json({ status: 'ok' });
+});
+
+// Start server
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
+
+// Export for testing
+export { app, server, wss }; 
