@@ -26,8 +26,16 @@ function getAccessToken() {
     if (!tokenData) {
         throw new Error('No access token found. Please log in.');
     }
-    const { access_token } = JSON.parse(tokenData);
-    return access_token;
+    try {
+        const { access_token } = JSON.parse(tokenData);
+        if (!access_token) {
+            throw new Error('Invalid token data. Please log in again.');
+        }
+        return access_token;
+    } catch (error) {
+        console.error('Error parsing token data:', error);
+        throw new Error('Invalid token data. Please log in again.');
+    }
 }
 
 // Refactored to fetch and return user data, not directly update DOM for individual placeholders.
@@ -118,6 +126,7 @@ function renderSubscriptionCards(webhookId, subscriptionsArray) {
 async function fetchAndDisplaySubscriptions(webhookId) {
     try {
         const accessToken = getAccessToken();
+        console.log('Fetching subscriptions for webhook:', webhookId);
         
         if (!webhookId) {
             throw new Error('Please select a webhook first');
@@ -126,29 +135,37 @@ async function fetchAndDisplaySubscriptions(webhookId) {
         // First check if we have any subscriptions
         const checkResponse = await fetch(`/api/webhooks/${webhookId}/subscriptions`, {
             headers: {
-                'Authorization': `Bearer ${accessToken}`
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
             }
         });
 
         if (!checkResponse.ok) {
-            throw new Error('Failed to check subscriptions');
+            const errorData = await checkResponse.json().catch(() => ({ message: 'Failed to parse error response' }));
+            console.error('Subscription check failed:', errorData);
+            throw new Error(errorData.message || 'Failed to check subscriptions');
         }
 
         const checkData = await checkResponse.json();
+        console.log('Subscription check response:', checkData);
         
         if (checkData.subscribed) {
             // If subscribed, fetch the list of subscriptions
             const listResponse = await fetch(`/api/webhooks/${webhookId}/subscriptions/list`, {
                 headers: {
-                    'Authorization': `Bearer ${accessToken}`
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
                 }
             });
 
             if (!listResponse.ok) {
-                throw new Error('Failed to fetch subscription list');
+                const errorData = await listResponse.json().catch(() => ({ message: 'Failed to parse error response' }));
+                console.error('Subscription list fetch failed:', errorData);
+                throw new Error(errorData.message || 'Failed to fetch subscription list');
             }
 
             const subscriptions = await listResponse.json();
+            console.log('Subscriptions list:', subscriptions);
             await renderSubscriptionCards(webhookId, subscriptions);
         } else {
             // If not subscribed, show empty state
@@ -204,6 +221,7 @@ async function handleAddSubscription() {
     try {
         const accessToken = getAccessToken();
         const webhookId = document.getElementById('webhook-select-for-subscriptions').value;
+        console.log('Adding subscription for webhook:', webhookId);
         
         if (!webhookId) {
             throw new Error('Please select a webhook first');
@@ -219,8 +237,13 @@ async function handleAddSubscription() {
         });
 
         if (!response.ok) {
-            throw new Error('Failed to add subscription');
+            const errorData = await response.json().catch(() => ({ message: 'Failed to parse error response' }));
+            console.error('Add subscription failed:', errorData);
+            throw new Error(errorData.message || 'Failed to add subscription');
         }
+
+        const result = await response.json();
+        console.log('Add subscription response:', result);
 
         // Refresh the subscription list
         await fetchAndDisplaySubscriptions(webhookId);
