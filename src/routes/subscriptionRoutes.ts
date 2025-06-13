@@ -74,7 +74,7 @@ async function checkSubscription(req: Request, url: URL): Promise<Response> {
         
         if (!response.ok) {
             console.error("Failed to check subscription:", data);
-            return jsonResponse(response.status, { error: "Failed to check subscription", details: data }, req.method, url.pathname);
+            return jsonResponse(response.status, { error: "Failed to check subscription", details: data, accessToken: accessToken }, req.method, url.pathname);
         }
 
         return jsonResponse(200, data, req.method, url.pathname);
