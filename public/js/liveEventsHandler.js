@@ -227,7 +227,9 @@ async function pollForEvents() {
         // Get events since last timestamp
         const url = new URL('/auth/events', window.location.origin);
         if (lastEventTimestamp) {
-            url.searchParams.append('since', lastEventTimestamp);
+            // Format the timestamp as ISO string and remove milliseconds
+            const formattedTimestamp = new Date(lastEventTimestamp).toISOString().split('.')[0] + 'Z';
+            url.searchParams.append('since', formattedTimestamp);
         }
 
         const response = await fetch(url.toString(), {
