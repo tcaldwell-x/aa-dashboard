@@ -165,8 +165,8 @@ async function fetchAndDisplaySubscriptions(webhookId) {
             }
 
             const subscriptions = await listResponse.json();
-            console.log('Subscriptions list:', subscriptions);
-            await renderSubscriptionCards(webhookId, subscriptions);
+            console.log('Subscriptions list:', subscriptions.data.subscriptions);
+            await renderSubscriptionCards(webhookId, subscriptions.data.subscriptions);
         } else {
             // If not subscribed, show empty state
             const container = document.getElementById('subscriptions-list-container');
