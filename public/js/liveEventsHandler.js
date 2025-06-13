@@ -210,12 +210,9 @@ function initializeLiveEvents() {
         return;
     }
 
-    // Create new EventSource connection
-    eventSource = new EventSource('/events/stream', {
-        headers: {
-            'Authorization': `Bearer ${token}`
-        }
-    });
+    // Create new EventSource connection with token as query parameter
+    const eventSourceUrl = `/events/stream?token=${encodeURIComponent(token)}`;
+    eventSource = new EventSource(eventSourceUrl);
 
     eventSource.onopen = function(event) {
         console.log("[EventSource] Connection established for live events.");
