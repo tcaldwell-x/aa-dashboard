@@ -788,13 +788,14 @@ async function handleOAuthCallback() {
     
     if (code && state) {
         try {
-            const response = await fetch(`/api/auth/callback?code=${code}&state=${state}`);
+            const response = await fetch(`/auth/callback?code=${code}&state=${state}`);
             if (!response.ok) {
                 throw new Error('Failed to complete authentication');
             }
             
             const data = await response.json();
-            // Store the tokens
+            
+            // Store the tokens in localStorage
             localStorage.setItem('tokenData', JSON.stringify({
                 access_token: data.access_token,
                 refresh_token: data.refresh_token,

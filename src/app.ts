@@ -1,6 +1,10 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import cors from 'cors';
+import { config } from 'dotenv';
+import type { Request, Response } from 'express';
+import session from 'express-session';
 import authRoutes from './routes/authRoutes.js';
 import { handleWebhookRoutes } from './routes/webhookRoutes.js';
 
@@ -15,6 +19,55 @@ app.use(express.static(path.join(__dirname, '../public')));
 
 // Routes
 app.use('/auth', authRoutes);
+
+// OAuth callback route
+app.get('/auth/callback', async (req: Request, res: Response) => {
+    try {
+        const { code, state } = req.query;
+        
+        if (!code || !state) {
+            return res.status(400).json({ error: 'Missing required parameters' });
+        }
+
+        // Exchange the code for tokens
+        const tokenResponse = await fetch('https://api.twitter.com/2/oauth2/token', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Authorization': `Basic ${Buffer.from(`${process.env.X_CLIENT_ID}:${process.env.X_CLIENT_SECRET}`).toString('base64')}`
+            },
+            body: new URLSearchParams({
+                code: code as string,
+                grant_type: 'authorization_code',
+                client_id: process.env.X_CLIENT_ID!,
+                redirect_uri: process.env.X_REDIRECT_URI!,
+                code_verifier: req.query.code_verifier as string || ''
+            })
+        });
+
+        if (!tokenResponse.ok) {
+            const error = await tokenResponse.json();
+            console.error('Token exchange error:', error);
+            return res.status(400).json({ error: 'Failed to exchange code for tokens' });
+        }
+
+        const tokenData = await tokenResponse.json() as {
+            access_token: string;
+            refresh_token: string;
+            expires_in: number;
+        };
+
+        // Return the tokens to the frontend
+        res.json({
+            access_token: tokenData.access_token,
+            refresh_token: tokenData.refresh_token,
+            expires_in: tokenData.expires_in
+        });
+    } catch (error) {
+        console.error('Callback error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
 // Handle webhook routes
 app.use(async (req, res, next) => {
