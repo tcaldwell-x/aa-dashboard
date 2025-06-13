@@ -17,6 +17,12 @@ app.use(express.static(path.join(__dirname, '../public')));
 // Routes
 app.use('/auth', authRoutes);
 
+// Status endpoint
+app.get('/auth/status', (req: Request, res: Response) => {
+    const accessToken = req.cookies.access_token;
+    res.json({ isLoggedIn: !!accessToken });
+});
+
 // OAuth callback route
 app.get('/auth/callback', async (req: Request, res: Response) => {
     try {
@@ -54,27 +60,15 @@ app.get('/auth/callback', async (req: Request, res: Response) => {
             expires_in: number;
         };
 
-        // Create a redirect URL with the tokens
-        const redirectUrl = new URL('/', process.env.X_REDIRECT_URI);
-        redirectUrl.searchParams.set('access_token', tokenData.access_token);
-        redirectUrl.searchParams.set('refresh_token', tokenData.refresh_token);
-        redirectUrl.searchParams.set('expires_in', tokenData.expires_in.toString());
+        // Redirect to the frontend with tokens in URL
+        const params = new URLSearchParams({
+            access_token: tokenData.access_token,
+            refresh_token: tokenData.refresh_token,
+            expires_in: tokenData.expires_in.toString()
+        });
 
-        // Send an HTML response that will redirect
-        res.send(`
-            <!DOCTYPE html>
-            <html>
-                <head>
-                    <title>Redirecting...</title>
-                    <script>
-                        window.location.href = "${redirectUrl.toString()}";
-                    </script>
-                </head>
-                <body>
-                    <p>Redirecting to application...</p>
-                </body>
-            </html>
-        `);
+        // Use a 307 Temporary Redirect to preserve the POST method
+        res.redirect(307, `/?${params.toString()}`);
     } catch (error) {
         console.error('Callback error:', error);
         res.redirect('/?error=auth_failed');

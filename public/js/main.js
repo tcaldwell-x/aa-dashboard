@@ -698,6 +698,7 @@ async function handleLogin() {
     }
 }
 
+// Check login status on page load
 async function checkLoginStatus() {
     const tokenData = localStorage.getItem('tokenData');
     const loginBtn = document.getElementById('login-btn');
@@ -720,39 +721,6 @@ async function checkLoginStatus() {
             updateUIForLoggedOutUser();
         }
     } else {
-        updateUIForLoggedOutUser();
-    }
-}
-
-async function refreshAccessToken() {
-    const tokenData = localStorage.getItem('tokenData');
-    if (!tokenData) {
-        updateUIForLoggedOutUser();
-        return;
-    }
-
-    try {
-        const { refresh_token } = JSON.parse(tokenData);
-        const response = await fetch(`/api/auth/refresh?refresh_token=${refresh_token}`);
-        
-        if (!response.ok) {
-            throw new Error('Failed to refresh token');
-        }
-
-        const data = await response.json();
-        // Store the new tokens
-        localStorage.setItem('tokenData', JSON.stringify({
-            access_token: data.access_token,
-            refresh_token: data.refresh_token,
-            expires_in: data.expires_in,
-            timestamp: Date.now()
-        }));
-
-        updateUIForLoggedInUser();
-    } catch (error) {
-        console.error('Token refresh error:', error);
-        // If refresh fails, clear tokens and show login button
-        localStorage.removeItem('tokenData');
         updateUIForLoggedOutUser();
     }
 }
