@@ -785,6 +785,14 @@ async function handleOAuthCallback() {
     const urlParams = new URLSearchParams(window.location.search);
     const code = urlParams.get('code');
     const state = urlParams.get('state');
+    const error = urlParams.get('error');
+    
+    if (error) {
+        console.error('Auth error:', error);
+        alert('Authentication failed. Please try again.');
+        window.location.href = '/';
+        return;
+    }
     
     if (code && state) {
         try {
@@ -793,24 +801,32 @@ async function handleOAuthCallback() {
                 throw new Error('Failed to complete authentication');
             }
             
-            const data = await response.json();
-            
-            // Store the tokens in localStorage
-            localStorage.setItem('tokenData', JSON.stringify({
-                access_token: data.access_token,
-                refresh_token: data.refresh_token,
-                expires_in: data.expires_in,
-                timestamp: Date.now()
-            }));
-            
-            // Update UI and redirect to home page
-            updateUIForLoggedInUser();
-            window.location.href = '/';
+            // The response will redirect us back to the frontend with tokens in URL
+            // The tokens will be handled by the URL parameter check below
         } catch (error) {
             console.error('Callback error:', error);
             alert('Failed to complete login process. Please try again.');
             window.location.href = '/';
         }
+    }
+    
+    // Check for tokens in URL parameters
+    const accessToken = urlParams.get('access_token');
+    const refreshToken = urlParams.get('refresh_token');
+    const expiresIn = urlParams.get('expires_in');
+    
+    if (accessToken && refreshToken && expiresIn) {
+        // Store the tokens in localStorage
+        localStorage.setItem('tokenData', JSON.stringify({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+            expires_in: parseInt(expiresIn),
+            timestamp: Date.now()
+        }));
+        
+        // Update UI and redirect to home page
+        updateUIForLoggedInUser();
+        window.location.href = '/';
     }
 }
 

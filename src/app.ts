@@ -45,7 +45,7 @@ app.get('/auth/callback', async (req: Request, res: Response) => {
         if (!tokenResponse.ok) {
             const error = await tokenResponse.json();
             console.error('Token exchange error:', error);
-            return res.status(400).json({ error: 'Failed to exchange code for tokens' });
+            return res.redirect('/?error=auth_failed');
         }
 
         const tokenData = await tokenResponse.json() as {
@@ -54,15 +54,17 @@ app.get('/auth/callback', async (req: Request, res: Response) => {
             expires_in: number;
         };
 
-        // Return the tokens to the frontend
-        res.json({
+        // Redirect back to the frontend with the tokens
+        const params = new URLSearchParams({
             access_token: tokenData.access_token,
             refresh_token: tokenData.refresh_token,
-            expires_in: tokenData.expires_in
+            expires_in: tokenData.expires_in.toString()
         });
+        
+        res.redirect(`/?${params.toString()}`);
     } catch (error) {
         console.error('Callback error:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.redirect('/?error=auth_failed');
     }
 });
 
