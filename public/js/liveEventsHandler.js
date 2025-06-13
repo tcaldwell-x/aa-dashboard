@@ -226,22 +226,29 @@ async function pollForEvents() {
 
         // Get events since last timestamp
         const url = new URL('/auth/events', window.location.origin);
+        
+        // Always use a valid timestamp
+        let timestamp;
         if (lastEventTimestamp) {
             // Ensure the timestamp is not in the future
-            const timestamp = new Date(lastEventTimestamp);
-            if (timestamp > new Date()) {
-                // If timestamp is in the future, use current time instead
-                lastEventTimestamp = new Date().toISOString();
+            const lastTimestamp = new Date(lastEventTimestamp);
+            const now = new Date();
+            if (lastTimestamp > now) {
+                // If timestamp is in the future, use current time minus 1 minute
+                timestamp = new Date(now.getTime() - 60000);
+            } else {
+                timestamp = lastTimestamp;
             }
-            // Format the timestamp as ISO string and remove milliseconds
-            const formattedTimestamp = new Date(lastEventTimestamp).toISOString().split('.')[0] + 'Z';
-            url.searchParams.append('since', formattedTimestamp);
         } else {
             // If no lastEventTimestamp, get events from the last hour
-            const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-            const formattedTimestamp = oneHourAgo.toISOString().split('.')[0] + 'Z';
-            url.searchParams.append('since', formattedTimestamp);
+            timestamp = new Date(Date.now() - 60 * 60 * 1000);
         }
+
+        // Format the timestamp as ISO string and remove milliseconds
+        const formattedTimestamp = timestamp.toISOString().split('.')[0] + 'Z';
+        url.searchParams.append('since', formattedTimestamp);
+
+        console.log('Polling for events since:', formattedTimestamp);
 
         const response = await fetch(url.toString(), {
             headers: {
@@ -251,7 +258,8 @@ async function pollForEvents() {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(`Failed to fetch events: ${response.status}${errorData.error ? ` - ${errorData.error}` : ''}`);
+            const errorMessage = errorData.message || errorData.error || `HTTP error ${response.status}`;
+            throw new Error(`Failed to fetch events: ${errorMessage}`);
         }
 
         const data = await response.json();
@@ -260,7 +268,7 @@ async function pollForEvents() {
         if (data.events && data.events.length > 0) {
             // Ensure the timestamp is valid before updating
             const newTimestamp = new Date(data.events[data.events.length - 1].timestamp);
-            if (!isNaN(newTimestamp.getTime())) {
+            if (!isNaN(newTimestamp.getTime()) && newTimestamp <= new Date()) {
                 lastEventTimestamp = data.events[data.events.length - 1].timestamp;
             }
             data.events.forEach(handleLiveEvent);
@@ -281,7 +289,7 @@ async function pollForEvents() {
         if (liveEventsContainer) {
             const statusElement = liveEventsContainer.querySelector('.connection-status');
             if (statusElement) {
-                statusElement.textContent = 'Error connecting to live event stream';
+                statusElement.textContent = `Error: ${error.message}`;
                 statusElement.className = 'connection-status error';
             }
         }
