@@ -183,4 +183,35 @@ router.get('/users/me', async (req: Request, res: Response) => {
     }
 });
 
+// Get user details by ID
+router.get('/users/:id', async (req: Request, res: Response) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ error: "Missing or invalid Authorization header" });
+        }
+        const accessToken = authHeader.split(' ')[1];
+        const userId = req.params.id;
+
+        const response = await fetch(`https://api.twitter.com/2/users/${userId}`, {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const data = await response.json();
+        
+        if (!response.ok) {
+            console.error("Failed to get user info:", data);
+            return res.status(response.status).json({ error: "Failed to get user info", details: data });
+        }
+
+        res.json(data);
+    } catch (error) {
+        console.error("Error getting user info:", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+
 export default router; 

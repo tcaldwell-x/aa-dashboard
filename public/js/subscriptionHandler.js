@@ -105,8 +105,8 @@ function renderSubscriptionCards(webhookId, subscriptionsArray) {
             }
             const { access_token } = JSON.parse(tokenData);
 
-            // Fetch user details from Twitter API
-            const response = await fetch(`https://api.twitter.com/2/users/${subscription.user_id}`, {
+            // Fetch user details through our backend proxy
+            const response = await fetch(`/auth/users/${subscription.user_id}`, {
                 headers: {
                     'Authorization': `Bearer ${access_token}`
                 }
