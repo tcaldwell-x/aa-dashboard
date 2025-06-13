@@ -159,5 +159,6 @@ server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
 
-// Export for testing
-export { app, server, wss }; 
+// Export for testing and server
+export { server, wss };
+export default app; 

@@ -1,12 +1,6 @@
-import app from './app.js';
+import app, { server } from './app.js';
 
-// For local development
-if (process.env.NODE_ENV !== 'production') {
-    const PORT = process.env.PORT || 3000;
-    app.listen(PORT, () => {
-        console.log(`Server is running on port ${PORT}`);
-    });
-}
+// The server is already started in app.ts
+// This file is just for compatibility with Vercel's serverless functions
 
-// For Vercel serverless
 export default app; 
