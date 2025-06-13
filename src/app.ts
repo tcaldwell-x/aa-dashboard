@@ -54,18 +54,27 @@ app.get('/auth/callback', async (req: Request, res: Response) => {
             expires_in: number;
         };
 
-        // Redirect back to the frontend with the tokens
-        const params = new URLSearchParams({
-            access_token: tokenData.access_token,
-            refresh_token: tokenData.refresh_token,
-            expires_in: tokenData.expires_in.toString()
-        });
-        
-        // Force a redirect to the frontend with tokens in URL
-        res.writeHead(302, {
-            'Location': `/?${params.toString()}`
-        });
-        res.end();
+        // Create a redirect URL with the tokens
+        const redirectUrl = new URL('/', process.env.X_REDIRECT_URI);
+        redirectUrl.searchParams.set('access_token', tokenData.access_token);
+        redirectUrl.searchParams.set('refresh_token', tokenData.refresh_token);
+        redirectUrl.searchParams.set('expires_in', tokenData.expires_in.toString());
+
+        // Send an HTML response that will redirect
+        res.send(`
+            <!DOCTYPE html>
+            <html>
+                <head>
+                    <title>Redirecting...</title>
+                    <script>
+                        window.location.href = "${redirectUrl.toString()}";
+                    </script>
+                </head>
+                <body>
+                    <p>Redirecting to application...</p>
+                </body>
+            </html>
+        `);
     } catch (error) {
         console.error('Callback error:', error);
         res.redirect('/?error=auth_failed');
