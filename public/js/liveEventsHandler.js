@@ -202,59 +202,72 @@ function initializeLiveEvents() {
         return;
     }
 
-    // Get the auth token
-    const token = localStorage.getItem('authToken');
-    if (!token) {
-        console.error("[EventSource] No auth token found");
+    // Get the auth token from tokenData
+    const tokenData = localStorage.getItem('tokenData');
+    if (!tokenData) {
+        console.error("[EventSource] No token data found");
         liveEventsContainer.innerHTML = '<p style="color:red;"><i>Authentication token not found. Please log in again.</i></p>';
         return;
     }
 
-    // Create new EventSource connection with token as query parameter
-    const eventSourceUrl = `/events/stream?token=${encodeURIComponent(token)}`;
-    eventSource = new EventSource(eventSourceUrl);
-
-    eventSource.onopen = function(event) {
-        console.log("[EventSource] Connection established for live events.");
-        if(liveEventsContainer.firstChild && liveEventsContainer.firstChild.tagName === 'P' && liveEventsContainer.firstChild.textContent.includes('Attempting to connect')){
-            liveEventsContainer.innerHTML = ''; // Clear "Attempting to connect..."
+    try {
+        const { access_token } = JSON.parse(tokenData);
+        if (!access_token) {
+            throw new Error('Invalid token data');
         }
-    };
 
-    eventSource.onmessage = function(event) {
-        try {
-            const eventData = JSON.parse(event.data);
-            console.log("[EventSource] Message from server: ", eventData);
-            
-            // Handle connection acknowledgment
-            if (eventData.type === "connection_ack") {
-                console.log("[EventSource] Connection acknowledged by server");
-                return;
+        // Create new EventSource connection with token as query parameter
+        const eventSourceUrl = `/events/stream?token=${encodeURIComponent(access_token)}`;
+        eventSource = new EventSource(eventSourceUrl);
+
+        eventSource.onopen = function(event) {
+            console.log("[EventSource] Connection established for live events.");
+            if(liveEventsContainer.firstChild && liveEventsContainer.firstChild.tagName === 'P' && liveEventsContainer.firstChild.textContent.includes('Attempting to connect')){
+                liveEventsContainer.innerHTML = ''; // Clear "Attempting to connect..."
             }
-            
-            addEventToContainer(eventData);
-        } catch (e) {
-            console.error("[EventSource] Error parsing message from server:", e);
-            addEventToContainer({ type: "system_error", message: "Error parsing server message.", details: event.data });
-        }
-    };
+        };
 
-    eventSource.onerror = function(event) {
-        console.error("[EventSource] Error observed:", event);
-        addEventToContainer({ type: "system_error", message: "EventSource error observed. See console for details." });
-        if(liveEventsContainer.firstChild && liveEventsContainer.firstChild.tagName === 'P' && liveEventsContainer.firstChild.textContent.includes('Attempting to connect')){
-            liveEventsContainer.innerHTML = '<p style="color:red;"><i>Error connecting to live event stream. See console.</i></p>';
-        }
-    };
-
-    return {
-        stop: () => {
-            if (eventSource) {
-                eventSource.close();
-                eventSource = null;
+        eventSource.onmessage = function(event) {
+            try {
+                const eventData = JSON.parse(event.data);
+                console.log("[EventSource] Message from server: ", eventData);
+                
+                // Handle connection acknowledgment
+                if (eventData.type === "connection_ack") {
+                    console.log("[EventSource] Connection acknowledged by server");
+                    return;
+                }
+                
+                addEventToContainer(eventData);
+            } catch (e) {
+                console.error("[EventSource] Error parsing message from server:", e);
+                addEventToContainer({ type: "system_error", message: "Error parsing server message.", details: event.data });
             }
-        }
-    };
+        };
+
+        eventSource.onerror = function(event) {
+            console.error("[EventSource] Error observed:", event);
+            addEventToContainer({ type: "system_error", message: "EventSource error observed. See console for details." });
+            if(liveEventsContainer.firstChild && liveEventsContainer.firstChild.tagName === 'P' && liveEventsContainer.firstChild.textContent.includes('Attempting to connect')){
+                liveEventsContainer.innerHTML = '<p style="color:red;"><i>Error connecting to live event stream. See console.</i></p>';
+            }
+        };
+
+        return {
+            stop: () => {
+                if (eventSource) {
+                    eventSource.close();
+                    eventSource = null;
+                }
+            }
+        };
+    } catch (e) {
+        console.error("[EventSource] Error parsing token data:", e);
+        liveEventsContainer.innerHTML = '<p style="color:red;"><i>Error parsing authentication token. Please log in again.</i></p>';
+        return {
+            stop: () => {}
+        };
+    }
 }
 
 // Export for use in other files
