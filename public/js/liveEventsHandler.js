@@ -1,5 +1,4 @@
-let liveEventsPollingInterval = null;
-let lastEventTimestamp = null;
+let liveEventsSocket = null;
 const MAX_EVENTS_DISPLAYED = 50; // Keep a manageable number of events on screen
 
 function formatXTimestamp(timestamp) {
@@ -195,148 +194,63 @@ function initializeLiveEvents() {
         return;
     }
 
-    // Clear any existing polling
-    if (liveEventsPollingInterval) {
-        clearInterval(liveEventsPollingInterval);
+    liveEventsContainer.innerHTML = '<p><i>Attempting to connect to live event stream...</i></p>';
+
+    if (liveEventsSocket && liveEventsSocket.readyState === WebSocket.OPEN) {
+        console.log("WebSocket already open for live events.");
+        addEventToContainer({type: "connection_ack", message: "Re-focused tab. WebSocket was already open."});
+        return;
     }
 
-    liveEventsContainer.innerHTML = '<p><i>Connecting to live event stream...</i></p>';
+    // Determine WebSocket protocol (ws or wss)
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProtocol}//${window.location.host}/ws/live-events`;
 
-    // Start polling for events
-    pollForEvents();
-    liveEventsPollingInterval = setInterval(pollForEvents, 5000);
+    liveEventsSocket = new WebSocket(wsUrl);
+
+    liveEventsSocket.onopen = function(event) {
+        console.log("[WebSocket] Connection established for live events.");
+        if(liveEventsContainer.firstChild && liveEventsContainer.firstChild.tagName === 'P' && liveEventsContainer.firstChild.textContent.includes('Attempting to connect')){
+            liveEventsContainer.innerHTML = ''; // Clear "Attempting to connect..."
+        }
+    };
+
+    liveEventsSocket.onmessage = function(event) {
+        try {
+            const eventData = JSON.parse(event.data);
+            console.log("[WebSocket] Message from server: ", eventData);
+            addEventToContainer(eventData);
+        } catch (e) {
+            console.error("[WebSocket] Error parsing message from server:", e);
+            addEventToContainer({ type: "system_error", message: "Error parsing server message.", details: event.data });
+        }
+    };
+
+    liveEventsSocket.onerror = function(event) {
+        console.error("[WebSocket] Error observed:", event);
+        addEventToContainer({ type: "system_error", message: "WebSocket error observed. See console for details." });
+        if(liveEventsContainer.firstChild && liveEventsContainer.firstChild.tagName === 'P' && liveEventsContainer.firstChild.textContent.includes('Attempting to connect')){
+            liveEventsContainer.innerHTML = '<p style="color:red;"><i>Error connecting to live event stream. See console.</i></p>';
+        }
+    };
+
+    liveEventsSocket.onclose = function(event) {
+        console.log("[WebSocket] Connection closed for live events. Code:", event.code, "Reason:", event.reason);
+        addEventToContainer({ type: "connection_ack", message: `WebSocket connection closed. Code: ${event.code}. ${event.reason ? "Reason: "+event.reason : ""}` });
+        liveEventsSocket = null; // Reset for re-connection if tab is re-opened
+        if(liveEventsContainer.firstChild && liveEventsContainer.firstChild.tagName === 'P' && liveEventsContainer.firstChild.textContent.includes('Attempting to connect')){
+            liveEventsContainer.innerHTML = '<p style="color:orange;"><i>Disconnected from live event stream. Will attempt to reconnect if you revisit this tab.</i></p>';
+        }
+    };
 
     return {
         stop: () => {
-            if (liveEventsPollingInterval) {
-                clearInterval(liveEventsPollingInterval);
-                liveEventsPollingInterval = null;
+            if (liveEventsSocket) {
+                liveEventsSocket.close();
+                liveEventsSocket = null;
             }
         }
     };
-}
-
-async function pollForEvents() {
-    try {
-        const tokenData = localStorage.getItem('tokenData');
-        if (!tokenData) {
-            throw new Error('No authentication token found');
-        }
-        const { access_token } = JSON.parse(tokenData);
-
-        // Get events since last timestamp
-        const url = new URL('/auth/events', window.location.origin);
-        
-        // Always use a valid timestamp
-        let timestamp;
-        const now = new Date();
-        
-        if (lastEventTimestamp) {
-            // Parse the last timestamp
-            const lastTimestamp = new Date(lastEventTimestamp);
-            
-            // Validate the timestamp
-            if (isNaN(lastTimestamp.getTime())) {
-                console.warn('Invalid lastEventTimestamp, resetting to 1 hour ago');
-                timestamp = new Date(now.getTime() - 60 * 60 * 1000);
-            } else if (lastTimestamp > now) {
-                console.warn('Future timestamp detected, resetting to 1 minute ago');
-                timestamp = new Date(now.getTime() - 60000);
-            } else {
-                timestamp = lastTimestamp;
-            }
-        } else {
-            // If no lastEventTimestamp, get events from the last hour
-            timestamp = new Date(now.getTime() - 60 * 60 * 1000);
-        }
-
-        // Double-check that we're not using a future timestamp
-        if (timestamp > now) {
-            console.warn('Timestamp still in future after validation, using current time minus 1 minute');
-            timestamp = new Date(now.getTime() - 60000);
-        }
-
-        // Format the timestamp as ISO string and remove milliseconds
-        const formattedTimestamp = timestamp.toISOString().split('.')[0] + 'Z';
-        url.searchParams.append('since', formattedTimestamp);
-
-        console.log('Polling for events since:', formattedTimestamp);
-
-        const response = await fetch(url.toString(), {
-            headers: {
-                'Authorization': `Bearer ${access_token}`
-            }
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            const errorMessage = errorData.message || errorData.error || `HTTP error ${response.status}`;
-            throw new Error(`Failed to fetch events: ${errorMessage}`);
-        }
-
-        const data = await response.json();
-        
-        // Update last timestamp if we got events
-        if (data.events && data.events.length > 0) {
-            // Ensure the timestamp is valid before updating
-            const newTimestamp = new Date(data.events[data.events.length - 1].timestamp);
-            if (!isNaN(newTimestamp.getTime()) && newTimestamp <= now) {
-                lastEventTimestamp = data.events[data.events.length - 1].timestamp;
-            } else {
-                console.warn('Invalid or future timestamp in response, not updating lastEventTimestamp');
-            }
-            data.events.forEach(handleLiveEvent);
-        }
-
-        // Update connection status
-        const liveEventsContainer = document.getElementById('live-events-container');
-        if (liveEventsContainer) {
-            const statusElement = liveEventsContainer.querySelector('.connection-status');
-            if (statusElement) {
-                statusElement.textContent = 'Connected to live event stream';
-                statusElement.className = 'connection-status connected';
-            }
-        }
-    } catch (error) {
-        console.error('Error polling for events:', error);
-        const liveEventsContainer = document.getElementById('live-events-container');
-        if (liveEventsContainer) {
-            const statusElement = liveEventsContainer.querySelector('.connection-status');
-            if (statusElement) {
-                statusElement.textContent = `Error: ${error.message}`;
-                statusElement.className = 'connection-status error';
-            }
-        }
-    }
-}
-
-function handleLiveEvent(event) {
-    const liveEventsContainer = document.getElementById('live-events-container');
-    if (!liveEventsContainer) return;
-
-    const eventElement = document.createElement('div');
-    eventElement.className = 'live-event';
-    
-    // Format the event data
-    const eventTime = new Date(event.timestamp).toLocaleTimeString();
-    const eventDetails = JSON.stringify(event.data, null, 2);
-    
-    eventElement.innerHTML = `
-        <div class="event-header">
-            <span class="event-time">${eventTime}</span>
-            <span class="event-type">${event.type}</span>
-        </div>
-        <pre class="event-data">${eventDetails}</pre>
-    `;
-    
-    // Add the new event at the top
-    liveEventsContainer.insertBefore(eventElement, liveEventsContainer.firstChild);
-    
-    // Limit the number of displayed events
-    const maxEvents = 50;
-    while (liveEventsContainer.children.length > maxEvents) {
-        liveEventsContainer.removeChild(liveEventsContainer.lastChild);
-    }
 }
 
 // Export for use in other files
