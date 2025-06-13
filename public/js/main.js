@@ -747,7 +747,7 @@ async function updateUIForLoggedInUser() {
         const { access_token } = JSON.parse(tokenData);
         
         // Fetch user info through our backend proxy
-        const response = await fetch('/api/users/me', {
+        const response = await fetch('/auth/users/me', {
             headers: {
                 'Authorization': `Bearer ${access_token}`
             }

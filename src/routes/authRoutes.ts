@@ -154,7 +154,7 @@ router.get('/callback', async (req: Request, res: Response) => {
 });
 
 // Get current user info
-router.get('/api/users/me', async (req: Request, res: Response) => {
+router.get('/users/me', async (req: Request, res: Response) => {
     try {
         const authHeader = req.headers.authorization;
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
