@@ -80,7 +80,7 @@ router.get('/start', (req: Request, res: Response) => {
         authUrl.searchParams.append('response_type', 'code');
         authUrl.searchParams.append('client_id', clientId);
         authUrl.searchParams.append('redirect_uri', redirectUri);
-        authUrl.searchParams.append('scope', 'tweet.read users.read offline.access');
+        authUrl.searchParams.append('scope', 'tweet.read users.read offline.access dm.read, dm.write');
         authUrl.searchParams.append('state', state);
         authUrl.searchParams.append('code_challenge', codeChallenge);
         authUrl.searchParams.append('code_challenge_method', 'S256');
