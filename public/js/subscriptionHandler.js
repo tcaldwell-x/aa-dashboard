@@ -79,7 +79,7 @@ function renderSubscriptionCards(webhookId, subscriptionsArray) {
     container.innerHTML = ''; // Clear loading/previous message
     container.appendChild(ul);
 
-    subscriptionsArray.forEach(subscription => {
+    subscriptionsArray.forEach(async subscription => {
         const li = document.createElement('li');
         li.id = `subscription-card-${subscription.id}`;
 
@@ -91,34 +91,59 @@ function renderSubscriptionCards(webhookId, subscriptionsArray) {
         deleteButton.onclick = () => confirmDeleteSubscription(webhookId, subscription.id);
 
         const contentDiv = document.createElement('div');
-        let userDetailsHtml;
-        if (subscription.error) {
-            userDetailsHtml = `<p style="color:red;"><em>Error loading details for User ID ${subscription.id}: ${subscription.message || subscription.details || 'Unknown error'}</em></p>`;
-        } else {
-            const profileUrl = subscription.username ? `https://x.com/${subscription.username}` : '#';
-            const avatarHtml = subscription.profile_image_url ? 
-                `<img src="${subscription.profile_image_url.replace('_normal', '_bigger')}" alt="Avatar" class="avatar-img">` : 
-                '<div class="avatar-placeholder"></div>';
-            
-            userDetailsHtml = `
-                <div class="user-card-layout">
-                    <div class="user-avatar-container">
-                        <a href="${profileUrl}" target="_blank" rel="noopener noreferrer" title="View profile on X">
-                            ${avatarHtml}
-                        </a>
-                    </div>
-                    <div class="user-info-container">
-                        <p class="user-handle">${subscription.username || 'N/A'}</p>
-                        <p class="user-id-subtext">ID: ${subscription.id}</p>
-                    </div>
-                </div>
-            `;
-        }
-        contentDiv.innerHTML = userDetailsHtml;
+        contentDiv.innerHTML = '<div class="loading-spinner"></div> Loading user details...';
         
         li.appendChild(deleteButton);
         li.appendChild(contentDiv);
         ul.appendChild(li);
+
+        try {
+            // Get the access token from localStorage
+            const tokenData = localStorage.getItem('tokenData');
+            if (!tokenData) {
+                throw new Error('No authentication token found');
+            }
+            const { access_token } = JSON.parse(tokenData);
+
+            // Fetch user details from Twitter API
+            const response = await fetch(`https://api.twitter.com/2/users/${subscription.user_id}`, {
+                headers: {
+                    'Authorization': `Bearer ${access_token}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch user details: ${response.status}`);
+            }
+
+            const userData = await response.json();
+            const user = userData.data;
+
+            // Update the content with user details
+            const profileUrl = `https://x.com/${user.username}`;
+            const userDetailsHtml = `
+                <div class="user-card-layout">
+                    <div class="user-info-container">
+                        <p class="user-handle">@${user.username}</p>
+                        <p class="user-name">${user.name}</p>
+                        <p class="user-id-subtext">ID: ${user.id}</p>
+                    </div>
+                </div>
+            `;
+            contentDiv.innerHTML = userDetailsHtml;
+
+        } catch (error) {
+            console.error('Error fetching user details:', error);
+            contentDiv.innerHTML = `
+                <div class="user-card-layout">
+                    <div class="user-info-container">
+                        <p class="user-handle">Error loading user details</p>
+                        <p class="user-id-subtext">ID: ${subscription.user_id}</p>
+                        <p class="error-message">${error.message}</p>
+                    </div>
+                </div>
+            `;
+        }
     });
 }
 
