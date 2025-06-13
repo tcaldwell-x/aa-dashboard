@@ -230,6 +230,11 @@ async function pollForEvents() {
             // Format the timestamp as ISO string and remove milliseconds
             const formattedTimestamp = new Date(lastEventTimestamp).toISOString().split('.')[0] + 'Z';
             url.searchParams.append('since', formattedTimestamp);
+        } else {
+            // If no lastEventTimestamp, get events from the last hour
+            const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+            const formattedTimestamp = oneHourAgo.toISOString().split('.')[0] + 'Z';
+            url.searchParams.append('since', formattedTimestamp);
         }
 
         const response = await fetch(url.toString(), {
