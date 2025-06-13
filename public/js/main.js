@@ -773,6 +773,11 @@ async function updateUIForLoggedInUser() {
         document.querySelectorAll('.user-specific').forEach(el => {
             el.style.display = 'block';
         });
+
+        // Initialize webhook dropdown if on subscriptions page
+        if (typeof populateWebhookDropdownForSubscriptions === 'function') {
+            await populateWebhookDropdownForSubscriptions();
+        }
     } catch (error) {
         console.error('Error updating UI:', error);
         updateUIForLoggedOutUser();
@@ -802,6 +807,7 @@ function handleLogout() {
 
 // Handle OAuth callback
 async function handleOAuthCallback() {
+    console.log('Handling OAuth callback...');
     const urlParams = new URLSearchParams(window.location.search);
     const code = urlParams.get('code');
     const state = urlParams.get('state');
