@@ -214,4 +214,47 @@ router.get('/users/:id', async (req: Request, res: Response) => {
     }
 });
 
+// Get events since last timestamp
+router.get('/events', async (req: Request, res: Response) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ error: "Missing or invalid Authorization header" });
+        }
+        const accessToken = authHeader.split(' ')[1];
+        const since = req.query.since as string;
+
+        // Get events from Twitter API
+        const response = await fetch(`https://api.twitter.com/2/users/me/tweets?${new URLSearchParams({
+            'tweet.fields': 'created_at,author_id',
+            'max_results': '10',
+            ...(since ? { 'start_time': since } : {})
+        })}`, {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const data = await response.json();
+        
+        if (!response.ok) {
+            console.error("Failed to get events:", data);
+            return res.status(response.status).json({ error: "Failed to get events", details: data });
+        }
+
+        // Transform the data into our event format
+        const events = data.data?.map((tweet: any) => ({
+            type: 'tweet',
+            timestamp: tweet.created_at,
+            data: tweet
+        })) || [];
+
+        res.json({ events });
+    } catch (error) {
+        console.error("Error getting events:", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+
 export default router; 

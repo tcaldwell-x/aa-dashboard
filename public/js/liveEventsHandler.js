@@ -1,4 +1,5 @@
-let liveEventsSocket = null;
+let liveEventsPollingInterval = null;
+let lastEventTimestamp = null;
 const MAX_EVENTS_DISPLAYED = 50; // Keep a manageable number of events on screen
 
 function formatXTimestamp(timestamp) {
@@ -188,70 +189,115 @@ function addEventToContainer(eventData) {
 }
 
 function initializeLiveEvents() {
-    // Determine if we're using HTTPS
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/live-events`;
-    
-    console.log('Initializing WebSocket connection to:', wsUrl);
-    
-    try {
-        const ws = new WebSocket(wsUrl);
-        
-        ws.onopen = () => {
-            console.log('WebSocket connection established');
-            // Send authentication token if available
-            const tokenData = localStorage.getItem('tokenData');
-            if (tokenData) {
-                try {
-                    const { access_token } = JSON.parse(tokenData);
-                    ws.send(JSON.stringify({ type: 'auth', token: access_token }));
-                } catch (error) {
-                    console.error('Error parsing token data:', error);
-                }
-            }
-        };
-
-        ws.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                handleLiveEvent(data);
-            } catch (error) {
-                console.error('Error parsing WebSocket message:', error);
-            }
-        };
-
-        ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-        };
-
-        ws.onclose = () => {
-            console.log('WebSocket connection closed');
-            // Attempt to reconnect after a delay
-            setTimeout(initializeLiveEvents, 5000);
-        };
-
-        return ws;
-    } catch (error) {
-        console.error('Error initializing WebSocket:', error);
-        // Attempt to reconnect after a delay
-        setTimeout(initializeLiveEvents, 5000);
+    const liveEventsContainer = document.getElementById('live-events-container');
+    if (!liveEventsContainer) {
+        console.error("Live events container not found.");
+        return;
     }
+
+    // Clear any existing polling
+    if (liveEventsPollingInterval) {
+        clearInterval(liveEventsPollingInterval);
+    }
+
+    liveEventsContainer.innerHTML = '<p><i>Connecting to live event stream...</i></p>';
+
+    // Start polling for events
+    pollForEvents();
+    liveEventsPollingInterval = setInterval(pollForEvents, 5000); // Poll every 5 seconds
+
+    return {
+        stop: () => {
+            if (liveEventsPollingInterval) {
+                clearInterval(liveEventsPollingInterval);
+                liveEventsPollingInterval = null;
+            }
+        }
+    };
 }
 
-function closeLiveEventsConnection() {
-    if (liveEventsSocket) {
-        console.log("[WebSocket] Closing live events connection.");
-        liveEventsSocket.close();
-        liveEventsSocket = null;
+async function pollForEvents() {
+    try {
+        const tokenData = localStorage.getItem('tokenData');
+        if (!tokenData) {
+            throw new Error('No authentication token found');
+        }
+        const { access_token } = JSON.parse(tokenData);
+
+        // Get events since last timestamp
+        const url = new URL('/auth/events', window.location.origin);
+        if (lastEventTimestamp) {
+            url.searchParams.append('since', lastEventTimestamp);
+        }
+
+        const response = await fetch(url.toString(), {
+            headers: {
+                'Authorization': `Bearer ${access_token}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch events: ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        // Update last timestamp if we got events
+        if (data.events && data.events.length > 0) {
+            lastEventTimestamp = data.events[data.events.length - 1].timestamp;
+            data.events.forEach(handleLiveEvent);
+        }
+
+        // Update connection status
         const liveEventsContainer = document.getElementById('live-events-container');
         if (liveEventsContainer) {
-            // liveEventsContainer.innerHTML = '<p><i>Disconnected from live event stream.</i></p>';
+            const statusElement = liveEventsContainer.querySelector('.connection-status');
+            if (statusElement) {
+                statusElement.textContent = 'Connected to live event stream';
+                statusElement.className = 'connection-status connected';
+            }
+        }
+    } catch (error) {
+        console.error('Error polling for events:', error);
+        const liveEventsContainer = document.getElementById('live-events-container');
+        if (liveEventsContainer) {
+            const statusElement = liveEventsContainer.querySelector('.connection-status');
+            if (statusElement) {
+                statusElement.textContent = 'Error connecting to live event stream';
+                statusElement.className = 'connection-status error';
+            }
         }
     }
 }
 
-// Expose functions to be called from main.js or HTML
-if (typeof window !== 'undefined') {
-    window.initializeLiveEvents = initializeLiveEvents;
-    window.closeLiveEventsConnection = closeLiveEventsConnection;
-} 
+function handleLiveEvent(event) {
+    const liveEventsContainer = document.getElementById('live-events-container');
+    if (!liveEventsContainer) return;
+
+    const eventElement = document.createElement('div');
+    eventElement.className = 'live-event';
+    
+    // Format the event data
+    const eventTime = new Date(event.timestamp).toLocaleTimeString();
+    const eventDetails = JSON.stringify(event.data, null, 2);
+    
+    eventElement.innerHTML = `
+        <div class="event-header">
+            <span class="event-time">${eventTime}</span>
+            <span class="event-type">${event.type}</span>
+        </div>
+        <pre class="event-data">${eventDetails}</pre>
+    `;
+    
+    // Add the new event at the top
+    liveEventsContainer.insertBefore(eventElement, liveEventsContainer.firstChild);
+    
+    // Limit the number of displayed events
+    const maxEvents = 50;
+    while (liveEventsContainer.children.length > maxEvents) {
+        liveEventsContainer.removeChild(liveEventsContainer.lastChild);
+    }
+}
+
+// Export for use in other files
+window.initializeLiveEvents = initializeLiveEvents; 
