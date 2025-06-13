@@ -188,61 +188,54 @@ function addEventToContainer(eventData) {
 }
 
 function initializeLiveEvents() {
-    const liveEventsContainer = document.getElementById('live-events-container');
-    if (!liveEventsContainer) {
-        console.error("Live events container not found.");
-        return;
+    // Determine if we're using HTTPS
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/live-events`;
+    
+    console.log('Initializing WebSocket connection to:', wsUrl);
+    
+    try {
+        const ws = new WebSocket(wsUrl);
+        
+        ws.onopen = () => {
+            console.log('WebSocket connection established');
+            // Send authentication token if available
+            const tokenData = localStorage.getItem('tokenData');
+            if (tokenData) {
+                try {
+                    const { access_token } = JSON.parse(tokenData);
+                    ws.send(JSON.stringify({ type: 'auth', token: access_token }));
+                } catch (error) {
+                    console.error('Error parsing token data:', error);
+                }
+            }
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                handleLiveEvent(data);
+            } catch (error) {
+                console.error('Error parsing WebSocket message:', error);
+            }
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+        };
+
+        ws.onclose = () => {
+            console.log('WebSocket connection closed');
+            // Attempt to reconnect after a delay
+            setTimeout(initializeLiveEvents, 5000);
+        };
+
+        return ws;
+    } catch (error) {
+        console.error('Error initializing WebSocket:', error);
+        // Attempt to reconnect after a delay
+        setTimeout(initializeLiveEvents, 5000);
     }
-    liveEventsContainer.innerHTML = '<p><i>Attempting to connect to live event stream...</i></p>';
-
-    if (liveEventsSocket && liveEventsSocket.readyState === WebSocket.OPEN) {
-        console.log("WebSocket already open for live events.");
-        addEventToContainer({type: "system_message", message: "Re-focused tab. WebSocket was already open."} ) // Example system message
-        return;
-    }
-
-    // Determine WebSocket protocol (ws or wss)
-    const wsProtocol = window.location.protocol === 'https:s' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProtocol}//${window.location.host}/ws/live-events`;
-
-    liveEventsSocket = new WebSocket(wsUrl);
-
-    liveEventsSocket.onopen = function(event) {
-        console.log("[WebSocket] Connection established for live events.");
-        if(liveEventsContainer.firstChild && liveEventsContainer.firstChild.tagName === 'P' && liveEventsContainer.firstChild.textContent.includes('Attempting to connect')){
-            liveEventsContainer.innerHTML = ''; // Clear "Attempting to connect..."
-        }
-        // Server sends an ack, which will be handled by onmessage
-        // addEventToContainer({ type: "system_message", message: "Connected to live event stream!" });
-    };
-
-    liveEventsSocket.onmessage = function(event) {
-        try {
-            const eventData = JSON.parse(event.data);
-            console.log("[WebSocket] Message from server: ", eventData);
-            addEventToContainer(eventData);
-        } catch (e) {
-            console.error("[WebSocket] Error parsing message from server:", e);
-            addEventToContainer({ type: "system_error", message: "Error parsing server message.", details: event.data });
-        }
-    };
-
-    liveEventsSocket.onerror = function(event) {
-        console.error("[WebSocket] Error observed:", event);
-        addEventToContainer({ type: "system_error", message: "WebSocket error observed. See console for details." });
-        if(liveEventsContainer.firstChild && liveEventsContainer.firstChild.tagName === 'P' && liveEventsContainer.firstChild.textContent.includes('Attempting to connect')){
-            liveEventsContainer.innerHTML = '<p style="color:red;"><i>Error connecting to live event stream. See console.</i></p>';
-        }
-    };
-
-    liveEventsSocket.onclose = function(event) {
-        console.log("[WebSocket] Connection closed for live events. Code:", event.code, "Reason:", event.reason);
-        addEventToContainer({ type: "system_message", message: `WebSocket connection closed. Code: ${event.code}. ${event.reason ? "Reason: "+event.reason : ""}` });
-        liveEventsSocket = null; // Reset for re-connection if tab is re-opened
-         if(liveEventsContainer.firstChild && liveEventsContainer.firstChild.tagName === 'P' && liveEventsContainer.firstChild.textContent.includes('Attempting to connect')){
-            liveEventsContainer.innerHTML = '<p style="color:orange;"><i>Disconnected from live event stream. Will attempt to reconnect if you revisit this tab.</i></p>';
-        }
-    };
 }
 
 function closeLiveEventsConnection() {
