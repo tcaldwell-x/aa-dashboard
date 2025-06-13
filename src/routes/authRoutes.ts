@@ -96,8 +96,28 @@ router.get('/callback', async (req: Request, res: Response) => {
     try {
         const { code, state } = req.query;
         
-        if (!code || !state) {
+        if (!code || !state || typeof code !== 'string' || typeof state !== 'string') {
             return res.redirect('/?error=missing_parameters');
+        }
+
+        // Retrieve stored code verifier
+        const storedData = pkceStore.get(state);
+        if (!storedData) {
+            console.error('Invalid or expired state:', state);
+            return res.redirect('/?error=invalid_state');
+        }
+
+        // Clean up used state
+        pkceStore.delete(state);
+
+        // Get environment variables
+        const clientId = process.env.X_CLIENT_ID;
+        const clientSecret = process.env.X_CLIENT_SECRET;
+        const redirectUri = process.env.X_REDIRECT_URI;
+
+        if (!clientId || !clientSecret || !redirectUri) {
+            console.error('Missing required environment variables:', { clientId, clientSecret, redirectUri });
+            return res.redirect('/?error=server_error');
         }
 
         // Exchange the code for tokens
@@ -105,14 +125,14 @@ router.get('/callback', async (req: Request, res: Response) => {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
-                'Authorization': `Basic ${Buffer.from(`${process.env.X_CLIENT_ID}:${process.env.X_CLIENT_SECRET}`).toString('base64')}`
+                'Authorization': `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`
             },
             body: new URLSearchParams({
-                code: code as string,
+                code,
                 grant_type: 'authorization_code',
-                client_id: process.env.X_CLIENT_ID!,
-                redirect_uri: process.env.X_REDIRECT_URI!,
-                code_verifier: req.query.code_verifier as string || ''
+                client_id: clientId,
+                redirect_uri: redirectUri,
+                code_verifier: storedData.codeVerifier
             })
         });
 
