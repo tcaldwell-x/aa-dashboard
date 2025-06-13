@@ -18,7 +18,10 @@ const app = express();
 const server = createServer(app);
 
 // Create WebSocket server
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ 
+    server,
+    path: '/ws/live-events'
+});
 
 // Store active connections
 const clients = new Map<WebSocket, { token: string }>();

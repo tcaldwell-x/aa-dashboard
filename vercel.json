@@ -8,6 +8,14 @@
   ],
   "routes": [
     {
+      "src": "/ws/live-events",
+      "dest": "src/server.ts",
+      "headers": {
+        "Connection": "Upgrade",
+        "Upgrade": "websocket"
+      }
+    },
+    {
       "src": "/api/(.*)",
       "dest": "src/server.ts"
     },
