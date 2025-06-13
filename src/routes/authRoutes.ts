@@ -91,54 +91,55 @@ router.get('/start', (req: Request, res: Response) => {
     }
 });
 
-// Handle OAuth callback
+// OAuth callback route
 router.get('/callback', async (req: Request, res: Response) => {
     try {
         const { code, state } = req.query;
-
-        if (!code || !state || typeof code !== 'string' || typeof state !== 'string') {
-            return res.status(400).json({ error: 'Missing or invalid code or state' });
+        
+        if (!code || !state) {
+            return res.redirect('/?error=missing_parameters');
         }
 
-        // Retrieve stored code verifier
-        const storedData = pkceStore.get(state);
-        if (!storedData) {
-            return res.status(400).json({ error: 'Invalid or expired state' });
+        // Exchange the code for tokens
+        const tokenResponse = await fetch('https://api.twitter.com/2/oauth2/token', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Authorization': `Basic ${Buffer.from(`${process.env.X_CLIENT_ID}:${process.env.X_CLIENT_SECRET}`).toString('base64')}`
+            },
+            body: new URLSearchParams({
+                code: code as string,
+                grant_type: 'authorization_code',
+                client_id: process.env.X_CLIENT_ID!,
+                redirect_uri: process.env.X_REDIRECT_URI!,
+                code_verifier: req.query.code_verifier as string || ''
+            })
+        });
+
+        if (!tokenResponse.ok) {
+            const error = await tokenResponse.json();
+            console.error('Token exchange error:', error);
+            return res.redirect('/?error=auth_failed');
         }
 
-        // Clean up used state
-        pkceStore.delete(state);
+        const tokenData = await tokenResponse.json() as {
+            access_token: string;
+            refresh_token: string;
+            expires_in: number;
+        };
 
-        // Get environment variables
-        const clientId = process.env.X_CLIENT_ID;
-        const clientSecret = process.env.X_CLIENT_SECRET;
-        const redirectUri = process.env.X_REDIRECT_URI;
-
-        if (!clientId || !clientSecret || !redirectUri) {
-            console.error('Missing required environment variables:', { clientId, clientSecret, redirectUri });
-            return res.status(500).json({ error: 'Server configuration error: Missing required environment variables' });
-        }
-
-        // Exchange code for tokens
-        const client = new TwitterApi({
-            clientId,
-            clientSecret,
+        // Redirect to the frontend with tokens in URL
+        const params = new URLSearchParams({
+            access_token: tokenData.access_token,
+            refresh_token: tokenData.refresh_token,
+            expires_in: tokenData.expires_in.toString()
         });
 
-        const { accessToken, refreshToken, expiresIn } = await client.loginWithOAuth2({
-            code,
-            codeVerifier: storedData.codeVerifier,
-            redirectUri,
-        });
-
-        res.json({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-            expires_in: expiresIn
-        });
+        // Use a 307 Temporary Redirect to preserve the POST method
+        res.redirect(307, `/?${params.toString()}`);
     } catch (error) {
-        console.error('Error handling OAuth callback:', error);
-        res.status(500).json({ error: 'Failed to complete authentication' });
+        console.error('Callback error:', error);
+        res.redirect('/?error=auth_failed');
     }
 });
 
