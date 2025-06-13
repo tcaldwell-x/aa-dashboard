@@ -213,12 +213,32 @@ function initializeLiveEvents() {
         if(liveEventsContainer.firstChild && liveEventsContainer.firstChild.tagName === 'P' && liveEventsContainer.firstChild.textContent.includes('Attempting to connect')){
             liveEventsContainer.innerHTML = ''; // Clear "Attempting to connect..."
         }
+        
+        // Send authentication message
+        const token = localStorage.getItem('authToken');
+        if (token) {
+            liveEventsSocket.send(JSON.stringify({
+                type: 'auth',
+                token: token
+            }));
+        } else {
+            console.error("[WebSocket] No auth token found");
+            addEventToContainer({ type: "system_error", message: "Authentication token not found. Please log in again." });
+            liveEventsSocket.close();
+        }
     };
 
     liveEventsSocket.onmessage = function(event) {
         try {
             const eventData = JSON.parse(event.data);
             console.log("[WebSocket] Message from server: ", eventData);
+            
+            // Handle connection acknowledgment
+            if (eventData.type === "connection_ack") {
+                console.log("[WebSocket] Connection acknowledged by server");
+                return;
+            }
+            
             addEventToContainer(eventData);
         } catch (e) {
             console.error("[WebSocket] Error parsing message from server:", e);
@@ -236,8 +256,17 @@ function initializeLiveEvents() {
 
     liveEventsSocket.onclose = function(event) {
         console.log("[WebSocket] Connection closed for live events. Code:", event.code, "Reason:", event.reason);
-        addEventToContainer({ type: "connection_ack", message: `WebSocket connection closed. Code: ${event.code}. ${event.reason ? "Reason: "+event.reason : ""}` });
+        
+        // Only show error message if it wasn't a normal closure
+        if (event.code !== 1000) {
+            addEventToContainer({ 
+                type: "system_error", 
+                message: `WebSocket connection closed. Code: ${event.code}. ${event.reason ? "Reason: "+event.reason : ""}` 
+            });
+        }
+        
         liveEventsSocket = null; // Reset for re-connection if tab is re-opened
+        
         if(liveEventsContainer.firstChild && liveEventsContainer.firstChild.tagName === 'P' && liveEventsContainer.firstChild.textContent.includes('Attempting to connect')){
             liveEventsContainer.innerHTML = '<p style="color:orange;"><i>Disconnected from live event stream. Will attempt to reconnect if you revisit this tab.</i></p>';
         }
@@ -246,7 +275,7 @@ function initializeLiveEvents() {
     return {
         stop: () => {
             if (liveEventsSocket) {
-                liveEventsSocket.close();
+                liveEventsSocket.close(1000, "User navigated away from live events tab");
                 liveEventsSocket = null;
             }
         }
