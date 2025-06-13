@@ -701,44 +701,83 @@ async function handleLogin() {
 // Check login status on page load
 async function checkLoginStatus() {
     const tokenData = localStorage.getItem('tokenData');
-    const loginBtn = document.getElementById('login-btn');
-    
-    if (tokenData) {
-        try {
-            const { access_token, expires_in, timestamp } = JSON.parse(tokenData);
-            const now = Date.now();
-            
-            // Check if token is expired (with 5-minute buffer)
-            if (now - timestamp > (expires_in * 1000 - 300000)) {
-                // Token is expired or will expire soon, try to refresh
-                await refreshAccessToken();
-            } else {
-                // Token is still valid
-                updateUIForLoggedInUser();
-            }
-        } catch (error) {
-            console.error('Error checking login status:', error);
-            updateUIForLoggedOutUser();
+    if (!tokenData) {
+        updateUIForLoggedOutUser();
+        return;
+    }
+
+    try {
+        const { access_token, expires_in, timestamp } = JSON.parse(tokenData);
+        const now = Date.now();
+        
+        // Check if token is expired (with 5-minute buffer)
+        if (now - timestamp > (expires_in * 1000 - 300000)) {
+            // Token is expired or will expire soon, try to refresh
+            await refreshAccessToken();
+        } else {
+            // Token is still valid
+            await updateUIForLoggedInUser();
         }
-    } else {
+    } catch (error) {
+        console.error('Error checking login status:', error);
         updateUIForLoggedOutUser();
     }
 }
 
-function updateUIForLoggedInUser() {
-    const loginBtn = document.getElementById('login-btn');
-    if (loginBtn) {
-        loginBtn.textContent = 'Logout';
-        loginBtn.onclick = handleLogout;
+// Update UI for logged in user
+async function updateUIForLoggedInUser() {
+    const tokenData = localStorage.getItem('tokenData');
+    if (!tokenData) {
+        updateUIForLoggedOutUser();
+        return;
+    }
+
+    try {
+        const { access_token } = JSON.parse(tokenData);
+        
+        // Fetch user info using the access token
+        const response = await fetch('https://api.twitter.com/2/users/me', {
+            headers: {
+                'Authorization': `Bearer ${access_token}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to fetch user info');
+        }
+
+        const data = await response.json();
+        const username = data.data.username;
+
+        // Update UI elements
+        const loginBtn = document.getElementById('login-btn');
+        if (loginBtn) {
+            loginBtn.textContent = `Logged in as @${username}`;
+            loginBtn.disabled = true;
+        }
+
+        // Show user-specific sections
+        document.querySelectorAll('.user-specific').forEach(el => {
+            el.style.display = 'block';
+        });
+    } catch (error) {
+        console.error('Error updating UI:', error);
+        updateUIForLoggedOutUser();
     }
 }
 
+// Update UI for logged out user
 function updateUIForLoggedOutUser() {
     const loginBtn = document.getElementById('login-btn');
     if (loginBtn) {
         loginBtn.textContent = 'Login with X';
-        loginBtn.onclick = handleLogin;
+        loginBtn.disabled = false;
     }
+
+    // Hide user-specific sections
+    document.querySelectorAll('.user-specific').forEach(el => {
+        el.style.display = 'none';
+    });
 }
 
 function handleLogout() {
@@ -788,8 +827,11 @@ async function handleOAuthCallback() {
         }));
         
         // Update UI and redirect to home page
-        updateUIForLoggedInUser();
-        window.location.href = '/';
+        await updateUIForLoggedInUser();
+        
+        // Remove tokens from URL without refreshing the page
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
     }
 }
 
