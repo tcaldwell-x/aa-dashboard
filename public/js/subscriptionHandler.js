@@ -227,6 +227,7 @@ async function handleAddSubscription() {
             throw new Error('Please select a webhook first');
         }
 
+        console.log('Making subscription request with token:', accessToken.substring(0, 10) + '...');
         const response = await fetch(`/api/webhooks/${webhookId}/subscriptions`, {
             method: 'POST',
             headers: {
@@ -236,14 +237,30 @@ async function handleAddSubscription() {
             body: JSON.stringify({})
         });
 
+        console.log('Subscription response status:', response.status);
+        const responseText = await response.text();
+        console.log('Raw response:', responseText);
+
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ message: 'Failed to parse error response' }));
-            console.error('Add subscription failed:', errorData);
-            throw new Error(errorData.message || 'Failed to add subscription');
+            let errorMessage;
+            try {
+                const errorData = JSON.parse(responseText);
+                errorMessage = errorData.message || errorData.error || 'Failed to add subscription';
+                console.error('Add subscription failed with parsed error:', errorData);
+            } catch (e) {
+                errorMessage = `Failed to add subscription: ${response.status} ${response.statusText}`;
+                console.error('Add subscription failed with unparseable response:', responseText);
+            }
+            throw new Error(errorMessage);
         }
 
-        const result = await response.json();
-        console.log('Add subscription response:', result);
+        let result;
+        try {
+            result = JSON.parse(responseText);
+            console.log('Add subscription response:', result);
+        } catch (e) {
+            console.warn('Could not parse successful response as JSON:', responseText);
+        }
 
         // Refresh the subscription list
         await fetchAndDisplaySubscriptions(webhookId);
