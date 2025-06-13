@@ -23,7 +23,7 @@ app.get('/auth/callback', async (req: Request, res: Response) => {
         const { code, state } = req.query;
         
         if (!code || !state) {
-            return res.status(400).json({ error: 'Missing required parameters' });
+            return res.redirect('/?error=missing_parameters');
         }
 
         // Exchange the code for tokens
@@ -61,6 +61,7 @@ app.get('/auth/callback', async (req: Request, res: Response) => {
             expires_in: tokenData.expires_in.toString()
         });
         
+        // Redirect to the frontend with tokens in URL
         res.redirect(`/?${params.toString()}`);
     } catch (error) {
         console.error('Callback error:', error);

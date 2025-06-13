@@ -796,13 +796,8 @@ async function handleOAuthCallback() {
     
     if (code && state) {
         try {
-            const response = await fetch(`/auth/callback?code=${code}&state=${state}`);
-            if (!response.ok) {
-                throw new Error('Failed to complete authentication');
-            }
-            
-            // The response will redirect us back to the frontend with tokens in URL
-            // The tokens will be handled by the URL parameter check below
+            // Redirect to the callback endpoint
+            window.location.href = `/auth/callback?code=${code}&state=${state}`;
         } catch (error) {
             console.error('Callback error:', error);
             alert('Failed to complete login process. Please try again.');
