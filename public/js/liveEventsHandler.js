@@ -204,7 +204,7 @@ function initializeLiveEvents() {
 
     // Start polling for events
     pollForEvents();
-    liveEventsPollingInterval = setInterval(pollForEvents, 5000); // Poll every 5 seconds
+    liveEventsPollingInterval = setInterval(pollForEvents, 5000);
 
     return {
         stop: () => {
