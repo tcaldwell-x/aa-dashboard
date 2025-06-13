@@ -20,17 +20,16 @@ function noContentResponse(method: string, pathname: string): Response {
 
 // Get subscription count
 async function getSubscriptionCount(req: Request, url: URL): Promise<Response> {
-    // Get the access token from the Authorization header
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return jsonResponse(401, { error: "Missing or invalid Authorization header" }, req.method, url.pathname);
+    const bearerToken = process.env.X_BEARER_TOKEN;
+    if (!bearerToken) {
+        console.error(`X_BEARER_TOKEN not found.`);
+        return jsonResponse(500, { error: "Server configuration error: Missing API token." }, req.method, url.pathname);
     }
-    const accessToken = authHeader.split(' ')[1];
 
     try {
         const response = await fetch('https://api.twitter.com/2/account_activity/subscriptions/count', {
             headers: {
-                'Authorization': `Bearer ${accessToken}`,
+                'Authorization': `Bearer ${bearerToken}`,
                 'Content-Type': 'application/json'
             }
         });
@@ -56,17 +55,16 @@ async function checkSubscription(req: Request, url: URL): Promise<Response> {
         return jsonResponse(400, { error: "Webhook ID is required" }, req.method, url.pathname);
     }
 
-    // Get the access token from the Authorization header
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return jsonResponse(401, { error: "Missing or invalid Authorization header" }, req.method, url.pathname);
+    const bearerToken = process.env.X_BEARER_TOKEN;
+    if (!bearerToken) {
+        console.error(`X_BEARER_TOKEN not found.`);
+        return jsonResponse(500, { error: "Server configuration error: Missing API token." }, req.method, url.pathname);
     }
-    const accessToken = authHeader.split(' ')[1];
 
     try {
         const response = await fetch(`https://api.twitter.com/2/account_activity/webhooks/${webhookId}/subscriptions/all`, {
             headers: {
-                'Authorization': `Bearer ${accessToken}`,
+                'Authorization': `Bearer ${bearerToken}`,
                 'Content-Type': 'application/json'
             }
         });
@@ -75,7 +73,7 @@ async function checkSubscription(req: Request, url: URL): Promise<Response> {
         
         if (!response.ok) {
             console.error("Failed to check subscription:", data);
-            return jsonResponse(response.status, { error: "Failed to check subscription", details: data, access_token: accessToken }, req.method, url.pathname);
+            return jsonResponse(response.status, { error: "Failed to check subscription", details: data }, req.method, url.pathname);
         }
 
         return jsonResponse(200, data, req.method, url.pathname);
@@ -92,17 +90,16 @@ async function getSubscriptionsList(req: Request, url: URL): Promise<Response> {
         return jsonResponse(400, { error: "Webhook ID is required" }, req.method, url.pathname);
     }
 
-    // Get the access token from the Authorization header
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return jsonResponse(401, { error: "Missing or invalid Authorization header" }, req.method, url.pathname);
+    const bearerToken = process.env.X_BEARER_TOKEN;
+    if (!bearerToken) {
+        console.error(`X_BEARER_TOKEN not found.`);
+        return jsonResponse(500, { error: "Server configuration error: Missing API token." }, req.method, url.pathname);
     }
-    const accessToken = authHeader.split(' ')[1];
 
     try {
         const response = await fetch(`https://api.twitter.com/2/account_activity/webhooks/${webhookId}/subscriptions/all/list`, {
             headers: {
-                'Authorization': `Bearer ${accessToken}`,
+                'Authorization': `Bearer ${bearerToken}`,
                 'Content-Type': 'application/json'
             }
         });
