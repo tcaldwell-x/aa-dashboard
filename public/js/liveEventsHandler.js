@@ -225,7 +225,7 @@ async function pollForEvents() {
         const { access_token } = JSON.parse(tokenData);
 
         // Get events since last timestamp
-        const url = new URL('/auth/events', window.location.origin);
+        const url = new URL('/api/auth/events', window.location.origin);
         if (lastEventTimestamp) {
             url.searchParams.append('since', lastEventTimestamp);
         }
