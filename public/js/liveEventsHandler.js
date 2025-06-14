@@ -1,5 +1,6 @@
-let eventSource = null;
+let pollInterval = null;
 const MAX_EVENTS_DISPLAYED = 50; // Keep a manageable number of events on screen
+const POLL_INTERVAL = 5000; // Poll every 5 seconds
 
 function formatXTimestamp(timestamp) {
     // Parses X's timestamp string and formats it
@@ -196,16 +197,16 @@ function initializeLiveEvents() {
 
     liveEventsContainer.innerHTML = '<p><i>Attempting to connect to live event stream...</i></p>';
 
-    if (eventSource && eventSource.readyState === EventSource.OPEN) {
-        console.log("EventSource already open for live events.");
-        addEventToContainer({type: "connection_ack", message: "Re-focused tab. EventSource was already open."});
+    if (pollInterval) {
+        console.log("Polling already active for live events.");
+        addEventToContainer({type: "connection_ack", message: "Re-focused tab. Polling was already active."});
         return;
     }
 
     // Get the auth token from tokenData
     const tokenData = localStorage.getItem('tokenData');
     if (!tokenData) {
-        console.error("[EventSource] No token data found");
+        console.error("[Poll] No token data found");
         liveEventsContainer.innerHTML = '<p style="color:red;"><i>Authentication token not found. Please log in again.</i></p>';
         return;
     }
@@ -216,92 +217,61 @@ function initializeLiveEvents() {
             throw new Error('Invalid token data');
         }
 
-        // Create new EventSource connection with token as query parameter
-        const eventSourceUrl = `/events/stream?token=${encodeURIComponent(access_token)}`;
-        eventSource = new EventSource(eventSourceUrl);
+        // Start polling
+        pollInterval = setInterval(async () => {
+            try {
+                const response = await fetch(`/events/poll?token=${encodeURIComponent(access_token)}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                console.log("[Poll] Response from server:", data);
+                
+                // Handle connection acknowledgment
+                if (data.type === "connection_ack") {
+                    console.log("[Poll] Connection acknowledged by server");
+                    if(liveEventsContainer.firstChild && liveEventsContainer.firstChild.tagName === 'P' && liveEventsContainer.firstChild.textContent.includes('Attempting to connect')){
+                        liveEventsContainer.innerHTML = ''; // Clear "Attempting to connect..."
+                    }
+                    return;
+                }
+                
+                addEventToContainer(data);
+            } catch (error) {
+                console.error("[Poll] Error polling server:", error);
+                addEventToContainer({ 
+                    type: "system_error", 
+                    message: "Error polling server. See console for details.",
+                    details: error.message 
+                });
+            }
+        }, POLL_INTERVAL);
 
-        // Track last heartbeat time and reconnection attempts
-        let lastHeartbeat = Date.now();
-        const HEARTBEAT_TIMEOUT = 20000; // 20 seconds (slightly longer than server's 15s interval)
-        let reconnectAttempts = 0;
-        const MAX_RECONNECT_ATTEMPTS = 5;
-        const RECONNECT_DELAY = 1000; // Start with 1 second delay
-
-        eventSource.onopen = function(event) {
-            console.log("[EventSource] Connection established for live events.");
-            lastHeartbeat = Date.now();
-            reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+        // Initial poll
+        const initialResponse = await fetch(`/events/poll?token=${encodeURIComponent(access_token)}`);
+        if (!initialResponse.ok) {
+            throw new Error(`HTTP error! status: ${initialResponse.status}`);
+        }
+        const initialData = await initialResponse.json();
+        console.log("[Poll] Initial response from server:", initialData);
+        
+        if (initialData.type === "connection_ack") {
+            console.log("[Poll] Initial connection acknowledged by server");
             if(liveEventsContainer.firstChild && liveEventsContainer.firstChild.tagName === 'P' && liveEventsContainer.firstChild.textContent.includes('Attempting to connect')){
                 liveEventsContainer.innerHTML = ''; // Clear "Attempting to connect..."
             }
-        };
-
-        eventSource.onmessage = function(event) {
-            try {
-                // Check for heartbeat
-                if (event.data.trim() === '') {
-                    lastHeartbeat = Date.now();
-                    return;
-                }
-
-                const eventData = JSON.parse(event.data);
-                console.log("[EventSource] Message from server: ", eventData);
-                
-                // Handle connection acknowledgment
-                if (eventData.type === "connection_ack") {
-                    console.log("[EventSource] Connection acknowledged by server");
-                    return;
-                }
-                
-                addEventToContainer(eventData);
-            } catch (e) {
-                console.error("[EventSource] Error parsing message from server:", e);
-                addEventToContainer({ type: "system_error", message: "Error parsing server message.", details: event.data });
-            }
-        };
-
-        eventSource.onerror = function(event) {
-            console.error("[EventSource] Error observed:", event);
-            
-            // Check if we've missed heartbeats
-            const now = Date.now();
-            if (now - lastHeartbeat > HEARTBEAT_TIMEOUT) {
-                console.log("[EventSource] Connection timed out due to missed heartbeats");
-                if (eventSource) {
-                    eventSource.close();
-                    eventSource = null;
-                }
-
-                // Implement exponential backoff for reconnection
-                if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-                    const delay = RECONNECT_DELAY * Math.pow(2, reconnectAttempts);
-                    console.log(`[EventSource] Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})...`);
-                    reconnectAttempts++;
-                    setTimeout(() => {
-                        initializeLiveEvents();
-                    }, delay);
-                } else {
-                    console.error("[EventSource] Max reconnection attempts reached");
-                    liveEventsContainer.innerHTML = '<p style="color:red;"><i>Connection lost. Please refresh the page to try again.</i></p>';
-                }
-            } else {
-                addEventToContainer({ type: "system_error", message: "EventSource error observed. See console for details." });
-                if(liveEventsContainer.firstChild && liveEventsContainer.firstChild.tagName === 'P' && liveEventsContainer.firstChild.textContent.includes('Attempting to connect')){
-                    liveEventsContainer.innerHTML = '<p style="color:red;"><i>Error connecting to live event stream. See console.</i></p>';
-                }
-            }
-        };
+        }
 
         return {
             stop: () => {
-                if (eventSource) {
-                    eventSource.close();
-                    eventSource = null;
+                if (pollInterval) {
+                    clearInterval(pollInterval);
+                    pollInterval = null;
                 }
             }
         };
     } catch (e) {
-        console.error("[EventSource] Error parsing token data:", e);
+        console.error("[Poll] Error parsing token data:", e);
         liveEventsContainer.innerHTML = '<p style="color:red;"><i>Error parsing authentication token. Please log in again.</i></p>';
         return {
             stop: () => {}

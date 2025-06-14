@@ -39,68 +39,24 @@ app.use(express.static(path.join(__dirname, '../public')));
 // Routes
 app.use('/auth', authRoutes);
 
-// SSE endpoint for live events
-app.get('/events/stream', (req: Request, res: Response) => {
+// Polling endpoint for live events
+app.get('/events/poll', (req: Request, res: Response) => {
     const token = req.query.token as string;
     if (!token) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // Set SSE headers
-    res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache, no-transform',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Credentials': 'true'
-    });
+    // Set headers for polling
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
 
     // Send initial connection message
-    res.write(`data: ${JSON.stringify({ type: "connection_ack", message: "Connected to live event stream" })}\n\n`);
-
-    // Add client to the set
-    sseClients.add(res);
-
-    // Set up heartbeat to keep connection alive
-    const heartbeat = setInterval(() => {
-        if (res.writableEnded) {
-            clearInterval(heartbeat);
-            return;
-        }
-        try {
-            // Send a comment to keep the connection alive
-            res.write(`: heartbeat\n\n`);
-            // Flush the response to ensure data is sent immediately
-            if (res.flush) {
-                res.flush();
-            }
-        } catch (e) {
-            console.error("[SSE] Error sending heartbeat:", e);
-            clearInterval(heartbeat);
-            sseClients.delete(res);
-        }
-    }, 15000); // Send heartbeat every 15 seconds (more frequent for Vercel)
-
-    // Remove client when connection closes
-    req.on('close', () => {
-        clearInterval(heartbeat);
-        sseClients.delete(res);
-        console.log('Client disconnected from SSE stream');
-    });
-
-    // Handle errors
-    req.on('error', (error) => {
-        console.error("[SSE] Connection error:", error);
-        clearInterval(heartbeat);
-        sseClients.delete(res);
-    });
-
-    // Handle client disconnect
-    res.on('close', () => {
-        clearInterval(heartbeat);
-        sseClients.delete(res);
-        console.log('Client disconnected from SSE stream (response close)');
+    res.json({ 
+        type: "connection_ack", 
+        message: "Connected to live event stream",
+        timestamp: new Date().toISOString()
     });
 });
 
