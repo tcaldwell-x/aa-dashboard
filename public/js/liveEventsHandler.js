@@ -220,13 +220,17 @@ function initializeLiveEvents() {
         const eventSourceUrl = `/events/stream?token=${encodeURIComponent(access_token)}`;
         eventSource = new EventSource(eventSourceUrl);
 
-        // Track last heartbeat time
+        // Track last heartbeat time and reconnection attempts
         let lastHeartbeat = Date.now();
-        const HEARTBEAT_TIMEOUT = 35000; // 35 seconds (slightly longer than server's 30s interval)
+        const HEARTBEAT_TIMEOUT = 20000; // 20 seconds (slightly longer than server's 15s interval)
+        let reconnectAttempts = 0;
+        const MAX_RECONNECT_ATTEMPTS = 5;
+        const RECONNECT_DELAY = 1000; // Start with 1 second delay
 
         eventSource.onopen = function(event) {
             console.log("[EventSource] Connection established for live events.");
             lastHeartbeat = Date.now();
+            reconnectAttempts = 0; // Reset reconnect attempts on successful connection
             if(liveEventsContainer.firstChild && liveEventsContainer.firstChild.tagName === 'P' && liveEventsContainer.firstChild.textContent.includes('Attempting to connect')){
                 liveEventsContainer.innerHTML = ''; // Clear "Attempting to connect..."
             }
@@ -267,11 +271,19 @@ function initializeLiveEvents() {
                     eventSource.close();
                     eventSource = null;
                 }
-                // Attempt to reconnect after a short delay
-                setTimeout(() => {
-                    console.log("[EventSource] Attempting to reconnect...");
-                    initializeLiveEvents();
-                }, 1000);
+
+                // Implement exponential backoff for reconnection
+                if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                    const delay = RECONNECT_DELAY * Math.pow(2, reconnectAttempts);
+                    console.log(`[EventSource] Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})...`);
+                    reconnectAttempts++;
+                    setTimeout(() => {
+                        initializeLiveEvents();
+                    }, delay);
+                } else {
+                    console.error("[EventSource] Max reconnection attempts reached");
+                    liveEventsContainer.innerHTML = '<p style="color:red;"><i>Connection lost. Please refresh the page to try again.</i></p>';
+                }
             } else {
                 addEventToContainer({ type: "system_error", message: "EventSource error observed. See console for details." });
                 if(liveEventsContainer.firstChild && liveEventsContainer.firstChild.tagName === 'P' && liveEventsContainer.firstChild.textContent.includes('Attempting to connect')){

@@ -49,9 +49,11 @@ app.get('/events/stream', (req: Request, res: Response) => {
     // Set SSE headers
     res.writeHead(200, {
         'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
+        'Cache-Control': 'no-cache, no-transform',
         'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no' // Disable proxy buffering
+        'X-Accel-Buffering': 'no',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Credentials': 'true'
     });
 
     // Send initial connection message
@@ -67,13 +69,18 @@ app.get('/events/stream', (req: Request, res: Response) => {
             return;
         }
         try {
+            // Send a comment to keep the connection alive
             res.write(`: heartbeat\n\n`);
+            // Flush the response to ensure data is sent immediately
+            if (res.flush) {
+                res.flush();
+            }
         } catch (e) {
             console.error("[SSE] Error sending heartbeat:", e);
             clearInterval(heartbeat);
             sseClients.delete(res);
         }
-    }, 30000); // Send heartbeat every 30 seconds
+    }, 15000); // Send heartbeat every 15 seconds (more frequent for Vercel)
 
     // Remove client when connection closes
     req.on('close', () => {
@@ -87,6 +94,13 @@ app.get('/events/stream', (req: Request, res: Response) => {
         console.error("[SSE] Connection error:", error);
         clearInterval(heartbeat);
         sseClients.delete(res);
+    });
+
+    // Handle client disconnect
+    res.on('close', () => {
+        clearInterval(heartbeat);
+        sseClients.delete(res);
+        console.log('Client disconnected from SSE stream (response close)');
     });
 });
 
