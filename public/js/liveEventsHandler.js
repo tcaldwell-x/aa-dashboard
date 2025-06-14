@@ -188,7 +188,8 @@ function addEventToContainer(eventData) {
     }
 }
 
-function initializeLiveEvents() {
+// Make initializeLiveEvents available globally
+window.initializeLiveEvents = async function() {
     const liveEventsContainer = document.getElementById('live-events-container');
     if (!liveEventsContainer) {
         console.error("Live events container not found.");
@@ -277,7 +278,4 @@ function initializeLiveEvents() {
             stop: () => {}
         };
     }
-}
-
-// Export for use in other files
-window.initializeLiveEvents = initializeLiveEvents; 
+}; 
