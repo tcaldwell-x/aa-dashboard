@@ -220,8 +220,13 @@ function initializeLiveEvents() {
         const eventSourceUrl = `/events/stream?token=${encodeURIComponent(access_token)}`;
         eventSource = new EventSource(eventSourceUrl);
 
+        // Track last heartbeat time
+        let lastHeartbeat = Date.now();
+        const HEARTBEAT_TIMEOUT = 35000; // 35 seconds (slightly longer than server's 30s interval)
+
         eventSource.onopen = function(event) {
             console.log("[EventSource] Connection established for live events.");
+            lastHeartbeat = Date.now();
             if(liveEventsContainer.firstChild && liveEventsContainer.firstChild.tagName === 'P' && liveEventsContainer.firstChild.textContent.includes('Attempting to connect')){
                 liveEventsContainer.innerHTML = ''; // Clear "Attempting to connect..."
             }
@@ -229,6 +234,12 @@ function initializeLiveEvents() {
 
         eventSource.onmessage = function(event) {
             try {
+                // Check for heartbeat
+                if (event.data.trim() === '') {
+                    lastHeartbeat = Date.now();
+                    return;
+                }
+
                 const eventData = JSON.parse(event.data);
                 console.log("[EventSource] Message from server: ", eventData);
                 
@@ -247,9 +258,25 @@ function initializeLiveEvents() {
 
         eventSource.onerror = function(event) {
             console.error("[EventSource] Error observed:", event);
-            addEventToContainer({ type: "system_error", message: "EventSource error observed. See console for details." });
-            if(liveEventsContainer.firstChild && liveEventsContainer.firstChild.tagName === 'P' && liveEventsContainer.firstChild.textContent.includes('Attempting to connect')){
-                liveEventsContainer.innerHTML = '<p style="color:red;"><i>Error connecting to live event stream. See console.</i></p>';
+            
+            // Check if we've missed heartbeats
+            const now = Date.now();
+            if (now - lastHeartbeat > HEARTBEAT_TIMEOUT) {
+                console.log("[EventSource] Connection timed out due to missed heartbeats");
+                if (eventSource) {
+                    eventSource.close();
+                    eventSource = null;
+                }
+                // Attempt to reconnect after a short delay
+                setTimeout(() => {
+                    console.log("[EventSource] Attempting to reconnect...");
+                    initializeLiveEvents();
+                }, 1000);
+            } else {
+                addEventToContainer({ type: "system_error", message: "EventSource error observed. See console for details." });
+                if(liveEventsContainer.firstChild && liveEventsContainer.firstChild.tagName === 'P' && liveEventsContainer.firstChild.textContent.includes('Attempting to connect')){
+                    liveEventsContainer.innerHTML = '<p style="color:red;"><i>Error connecting to live event stream. See console.</i></p>';
+                }
             }
         };
 

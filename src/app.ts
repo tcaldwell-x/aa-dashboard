@@ -50,7 +50,8 @@ app.get('/events/stream', (req: Request, res: Response) => {
     res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no' // Disable proxy buffering
     });
 
     // Send initial connection message
@@ -59,10 +60,33 @@ app.get('/events/stream', (req: Request, res: Response) => {
     // Add client to the set
     sseClients.add(res);
 
+    // Set up heartbeat to keep connection alive
+    const heartbeat = setInterval(() => {
+        if (res.writableEnded) {
+            clearInterval(heartbeat);
+            return;
+        }
+        try {
+            res.write(`: heartbeat\n\n`);
+        } catch (e) {
+            console.error("[SSE] Error sending heartbeat:", e);
+            clearInterval(heartbeat);
+            sseClients.delete(res);
+        }
+    }, 30000); // Send heartbeat every 30 seconds
+
     // Remove client when connection closes
     req.on('close', () => {
+        clearInterval(heartbeat);
         sseClients.delete(res);
         console.log('Client disconnected from SSE stream');
+    });
+
+    // Handle errors
+    req.on('error', (error) => {
+        console.error("[SSE] Connection error:", error);
+        clearInterval(heartbeat);
+        sseClients.delete(res);
     });
 });
 
